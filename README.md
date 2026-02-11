@@ -26,7 +26,7 @@ npm install
 
 ## Configuration
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (see `.env.example`):
 
 ```env
 # WebSocket Server
@@ -38,13 +38,67 @@ DB_PORT=3306
 DB_USER=root
 DB_PASS=your_password
 DB_NAME=test_fingerspot
-
-# Connection Pool
 DB_CONN_LIMIT=10
 
-# Device Status
+# Device Connection
 DEVICE_OFFLINE_SECONDS=10
+
+# Security Settings
+MAX_MESSAGE_SIZE=10485760        # 10MB max message size
+MAX_IMAGE_SIZE=5242880           # 5MB max image size
+MAX_CONNECTIONS_PER_IP=5         # Max WebSocket connections per IP
+RATE_LIMIT_MAX=100               # Max requests per minute per IP
+CONNECTION_TIMEOUT=300000        # 5 minutes idle timeout
+
+# Optional: Device Authentication
+# DEVICE_AUTH_TOKEN=your_secret_token_here
 ```
+
+## Security Features
+
+The server includes comprehensive security hardening:
+
+### Input Validation
+- ✓ Serial number format validation (alphanumeric, dash, underscore only)
+- ✓ Command whitelist enforcement
+- ✓ Message size limits (default 10MB)
+- ✓ String length limits on all fields
+- ✓ Type validation on numeric fields
+
+### Rate Limiting
+- ✓ Per-IP request rate limiting (100 requests/minute default)
+- ✓ Connection limits per IP (5 connections default)
+- ✓ Automatic cleanup of rate limit tracking
+
+### Image Security
+- ✓ Base64 format validation
+- ✓ File size limits (5MB default)
+- ✓ JPEG magic byte validation
+- ✓ Path traversal prevention
+- ✓ Filename sanitization
+
+### Network Security
+- ✓ Connection timeout for idle clients (5 minutes)
+- ✓ WebSocket max payload enforcement
+- ✓ Graceful shutdown on SIGINT/SIGTERM
+- ✓ SQL injection prevention (prepared statements)
+
+### Optional Authentication
+Set `DEVICE_AUTH_TOKEN` in `.env` to require devices to authenticate during registration:
+```json
+{
+  "cmd": "reg",
+  "sn": "DEVICE123",
+  "token": "your_secret_token_here"
+}
+```
+
+### Logging
+- Connection/disconnection events with message counts
+- Rate limit violations
+- Authentication failures
+- Invalid data attempts
+- All security rejections
 
 ## Database Setup
 
@@ -261,16 +315,42 @@ ws/
 - Check firewall allows port 9001
 - Verify device IP can reach server
 - Ensure Protocol 2.4 is enabled on device
+- Check if connection limit per IP is reached
+- If using `DEVICE_AUTH_TOKEN`, ensure device sends it in reg command
+
+### Connection rejected
+- **"Too many connections from IP"**: Reduce devices per IP or increase `MAX_CONNECTIONS_PER_IP`
+- **"Rate limit exceeded"**: Increase `RATE_LIMIT_MAX` or check for device malfunction
+- **"Authentication required"**: Device must send correct token in registration
 
 ### Logs not saving
 - Check `attendance_logs` table exists
 - Verify database credentials in `.env`
 - Check server console for DB errors
+- Verify device serial number format (alphanumeric only)
+
+### Images not saving
+- Check `images/` directory exists and is writable
+- Verify image is valid JPEG format
+- Check if image size exceeds `MAX_IMAGE_SIZE`
+- Review console for "INVALID IMAGE" or "IMAGE TOO LARGE" messages
 
 ### Device shows offline
 - Increase `DEVICE_OFFLINE_SECONDS` if network is slow
 - Check device heartbeat interval setting
 - Verify `device_status` table exists
+
+### High CPU/Memory usage
+- Reduce `MAX_CONNECTIONS_PER_IP` and `RATE_LIMIT_MAX`
+- Decrease `CONNECTION_TIMEOUT` to drop idle connections faster
+- Check for malicious/malfunctioning devices sending excessive data
+
+### Security concerns
+- Always use `DEVICE_AUTH_TOKEN` in production
+- Run behind nginx/reverse proxy with SSL/TLS
+- Use firewall to restrict access to known device IPs
+- Regularly review logs for suspicious activity
+- Keep `MAX_MESSAGE_SIZE` and `MAX_IMAGE_SIZE` as low as practical
 
 ## License
 
