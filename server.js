@@ -464,7 +464,7 @@ wss.on('connection', (ws, req) => {
               record.temp ? parseFloat(record.temp) : null,
               imagePath,
               ip,
-              JSON.stringify(record).substring(0, 65535) // Limit JSON size
+              JSON.stringify(record).substring(0, 65535)
             ]
           );
 
@@ -477,10 +477,11 @@ wss.on('connection', (ws, req) => {
       ws.send(JSON.stringify({
         ret: "sendlog",
         result: true,
-        sn: data.sn,
         count: data.count,
         logindex: data.logindex,
-        cloudtime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        cloudtime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        access: 1,
+        message: "success"
       }));
 
       console.log("ACK sent to device");
