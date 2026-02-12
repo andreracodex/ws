@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { startApiServer } = require('./api');
 
 require('dotenv').config();
 
@@ -120,7 +121,9 @@ const initDb = async () => {
   }
 };
 
-initDb();
+initDb().finally(() => {
+  startApiServer(db);
+});
 
 /* ================= UTILITY FUNCTIONS ================= */
 const storeDeviceMessage = async (ip, payload, data, isJsonValid, parseError) => {
