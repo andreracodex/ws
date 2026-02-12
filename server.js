@@ -393,6 +393,7 @@ const handleSendLog = async (ws, data, ip) => {
     }
 
     try {
+      console.log(`[DB INSERT] SN: ${data.sn}, EnrollID: ${enrollId}, Time: ${record.time}`);
       await db.execute(
         `INSERT INTO attendance_logs
         (device_sn, enroll_id, user_name, log_time, verify_mode, io_status,
@@ -414,7 +415,7 @@ const handleSendLog = async (ws, data, ip) => {
         ]
       );
     } catch (err) {
-      console.error("DB INSERT ERROR:", err.message);
+      console.error(`[DB INSERT ERROR] SN: ${data.sn}, EnrollID: ${enrollId}, Time: ${record.time} - ${err.message}`);
     }
   }
 
