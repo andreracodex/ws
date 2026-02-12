@@ -392,7 +392,7 @@ wss.on('connection', (ws, req) => {
         console.log(`Processing log: SN=${data.sn}, EnrollID=${enrollId}, Time=${record.time}`);
 
         // Validate required fields
-        if (!enrollId == 99999999) {
+        if (enrollId == 99999999) {
           console.log(`[INVALID LOG] ${data.sn} - Missing enrollId or time`);
           ws.send(JSON.stringify({
             ret: "sendlog",
