@@ -1,19 +1,25 @@
-<html lang="en" class="">
+<html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
-    <title>Time is Money</title>
+    <meta name="apple-mobile-web-app-title" content="CodePen">
+    
+    <link rel="apple-touch-icon" type="image/png"
+        href="https://twemoji.maxcdn.com/v/latest/72x72/1f30d.png">
 
-    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/png"
+        href="https://twemoji.maxcdn.com/v/latest/72x72/1f30d.png">
 
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
-    <link rel="canonical" href="https://codepen.io/jkantner/pen/KQaZdp">
+    <link rel="mask-icon" type="image/svg+xml"
+        href="https://twemoji.maxcdn.com/v/latest/svg/1f30d.svg" color="#111">
+    <script
+        src="https://cpwebassets.codepen.io/assets/common/stopExecutionOnTimeout-2c7831bb44f98c1391d6a4ffda0e1fd302503391ca806e7fcc7b9b87197aec26.js">
+    </script>
 
+    <title>Time Is Money - Berdikari Asia</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-
-    <style id="INLINE_PEN_STYLESHEET_ID">
+    <style>
         * {
             border: 0;
             box-sizing: border-box;
@@ -72,7 +78,7 @@
         }
 
         .block-inner div {
-            background-color: #ffe100;
+            background-color: #ffaa00;
         }
 
         .block-inner>div {
@@ -4265,14 +4271,14 @@
         @keyframes bounce {
 
             from,
-            60%,
+            50%,
             to {
                 transform: translateY(0);
             }
 
             25%,
             75% {
-                transform: translateY(20px);
+                transform: translateY(10px);
             }
         }
 
@@ -4289,30 +4295,22 @@
         }
     </style>
 
+    <script>
+        window.console = window.console || function(t) {};
+    </script>
 
-    <script
-        src="https://cpwebassets.codepen.io/assets/common/stopExecutionOnTimeout-2c7831bb44f98c1391d6a4ffda0e1fd302503391ca806e7fcc7b9b87197aec26.js">
-    </script>
-    <script
-        src="https://cpwebassets.codepen.io/assets/editor/iframe/iframeConsoleRunner-6d8bf8b4b479137260842506acbb12717dace0823c023e08b96360e60b0840d9.js">
-    </script>
-    <script
-        src="https://cpwebassets.codepen.io/assets/editor/iframe/iframeRefreshCSS-44fe83e49b63affec96918c9af88c0d80b209a862cf87ac46bc933074b8c557d.js">
-    </script>
-    <script
-        src="https://cpwebassets.codepen.io/assets/editor/iframe/iframeRuntimeErrors-4f205f2c14e769b448bcf477de2938c681660d5038bc464e3700256713ebe261.js">
-    </script>
+
+
 </head>
 
-<body>
-
+<body translate="no">
     <div class="container">
-        <div class="digit _2"></div>
-        <div class="digit _3"></div>
+        <div class="digit _0"></div>
+        <div class="digit _9"></div>
+        <div class="digit _1"></div>
+        <div class="digit _9"></div>
         <div class="digit _3"></div>
         <div class="digit _6"></div>
-        <div class="digit _2"></div>
-        <div class="digit _3"></div>
         <div class="surface">
             <div class="block b1">
                 <div class="block-outer">
@@ -5257,8 +5255,41 @@
         </div>
     </div>
 
-    <script src="https://cdpn.io/cpe/boomboom/pen.js?key=pen.js-c7e7c02b-916b-c468-6bb9-a1d7bf7a6913" crossorigin="">
+    <script id="rendered-js">
+        window.addEventListener("load", update);
+
+        function update() {
+            let time = new Date(),
+                hr = time.getHours(),
+                min = time.getMinutes(),
+                sec = time.getSeconds();
+
+            // prepend 0s to single digits
+            if (hr < 10)
+                hr = "0" + hr;
+            if (min < 10)
+                min = "0" + min;
+            if (sec < 10)
+                sec = "0" + sec;
+
+            let timeStr = `${hr}${min}${sec}`,
+                digits = document.querySelectorAll(".digit"),
+                digitArr = [];
+
+            for (let d in digits) {
+                d = +d;
+                if (d < digits.length) {
+                    digitArr[d] = timeStr.substr(d, 1);
+                    digits[d].className = "digit _" + digitArr[d];
+                }
+            }
+            setTimeout(update, 1000);
+        }
+        //# sourceURL=pen.js
     </script>
+
+
+
 
 
 </body>

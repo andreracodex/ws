@@ -1,7 +1,7 @@
 {
   "name": "ws",
   "version": "1.0.0",
-  "description": "",
+  "description": "WebSocket server for receiving attendance logs and device status from AI-enabled fingerprint/face recognition devices (Camel or Fingerspot AI devices).",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -16,5 +16,14 @@
     "dotenv": "^16.4.7",
     "mysql2": "^3.17.0",
     "ws": "^8.19.0"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andreracodex/ws.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andreracodex/ws/issues"
+  },
+  "homepage": "https://github.com/andreracodex/ws#readme"
 }
