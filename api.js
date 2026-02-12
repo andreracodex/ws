@@ -76,7 +76,21 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
 
     try {
       const [rows] = await db.execute(
-        `SELECT * FROM attendance_logs
+        `SELECT
+           id,
+           device_sn,
+           enroll_id,
+           user_name,
+           COALESCE(DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s'), log_time) AS log_time,
+           verify_mode,
+           io_status,
+           event_code,
+           temperature,
+           image_path,
+           device_ip,
+           raw_json,
+           created_at
+         FROM attendance_logs
          ${whereSql}
          ORDER BY id DESC
          LIMIT ${limit} OFFSET ${offset}`,
