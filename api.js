@@ -38,7 +38,7 @@ const buildAttendanceQuery = (params) => {
   return { whereSql, values };
 };
 
-const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 9010) => {
+const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 9002) => {
   const server = http.createServer(async (req, res) => {
     if (!req.url) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
