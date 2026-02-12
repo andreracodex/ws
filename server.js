@@ -464,10 +464,10 @@ wss.on('connection', (ws, req) => {
               record.temp ? parseFloat(record.temp) : null,
               imagePath,
               ip,
-              JSON.stringify(record).substring(0, 65535)
+              JSON.stringify(record).substring(0, 65535) // Limit JSON size
             ]
           );
-
+          
         } catch (err) {
           console.error("DB ERROR:", err.message);
         }
@@ -481,7 +481,7 @@ wss.on('connection', (ws, req) => {
         logindex: data.logindex,
         cloudtime: new Date().toISOString().slice(0, 19).replace('T', ' '),
         access: 1,
-        message: "success"
+        message: "message open the door"
       }));
 
       console.log("ACK sent to device");
