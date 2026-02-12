@@ -16,18 +16,10 @@ const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = Number.parseInt(process.env.RATE_LIMIT_MAX, 10) || 100;
 const CONNECTION_TIMEOUT = Number.parseInt(process.env.CONNECTION_TIMEOUT, 10) || 300000; // 5 minutes
 const DEVICE_AUTH_TOKEN = process.env.DEVICE_AUTH_TOKEN || null; // Optional authentication
-const RAW_LOG_PATH = process.env.RAW_LOG_PATH || path.join(__dirname, 'ai518_raw.log');
 
 /* ================= SECURITY TRACKING ================= */
 const connectionsByIP = new Map();
 const rateLimitByIP = new Map();
-
-/* ================= RAW LOGGING ================= */
-const rawLogStream = fs.createWriteStream(RAW_LOG_PATH, { flags: 'a' });
-const logRawMessage = (ip, payload) => {
-  const timestamp = new Date().toISOString();
-  rawLogStream.write(`${timestamp} ${ip} ${payload}\n`);
-};
 
 /* ================= DATABASE ================= */
 const db = mysql.createPool({
@@ -297,13 +289,6 @@ wss.on('connection', (ws, req) => {
     messageCount++;
     const rawMessage = message.toString();
 
-    // Capture raw payload for troubleshooting
-    try {
-      logRawMessage(ip, rawMessage);
-    } catch (err) {
-      console.log(`[RAW LOG ERROR] ${ip} - ${err.message}`);
-    }
-    
     // Rate limiting
     if (!checkRateLimit(ip)) {
       console.log(`[RATE LIMIT] ${ip}`);
