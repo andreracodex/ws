@@ -1,357 +1,555 @@
-# AI Push Server (Protocol 2.4)
+# Fingerspot AI WebSocket Server - Protocol 2.4
+## Improvements & Implementation Guide
 
-WebSocket server for receiving attendance logs and device status from AI-enabled fingerprint/face recognition devices (Camel or Fingerspot AI devices).
+## Key Improvements Made
 
-## Features
+### 1. **Protocol 2.4 Compliance**
+- ✅ Proper `logindex` handling in sendlog responses
+- ✅ Correct acknowledgment format with all required fields
+- ✅ Support for QR code protocol (`sendqrcode` command)
+- ✅ Enhanced device info tracking (all devinfo fields)
+- ✅ Proper handling of AI device features (temperature, images, verifymode)
 
-- **Real-time WebSocket communication** with AI attendance devices
-- **Device registration & heartbeat monitoring** with connection status tracking
-- **Attendance log collection** with face image capture
-- **Device information tracking** (capacity, firmware, MAC address, etc.)
-- **MySQL database integration** for logs and device status
-- **Auto-offline detection** for unresponsive devices
-- **Environment-based configuration** via `.env` file
+### 2. **Enhanced Data Validation**
+- ✅ Comprehensive command validation (all protocol commands)
+- ✅ Better enrollid validation (handles enrollid=0 for system events)
+- ✅ Improved time field validation
+- ✅ JPEG magic byte validation for images
+- ✅ More robust base64 validation
 
-## Requirements
+### 3. **Better Database Schema**
+- ✅ Added proper indexes for performance
+- ✅ Device status table with comprehensive device info
+- ✅ Unique constraint on attendance logs to prevent duplicates
+- ✅ Better field types and sizes
 
-- Node.js 14+
-- MySQL 5.7+ / MariaDB 10.2+
-- FingerSpot AI device supporting Protocol 2.4
+### 4. **Improved Connection Management**
+- ✅ Ping/pong heartbeat mechanism
+- ✅ Better connection health monitoring
+- ✅ Automatic dead connection cleanup
+- ✅ Per-IP connection tracking
 
-## Installation
+### 5. **Better Logging & Debugging**
+- ✅ More descriptive console output
+- ✅ Better error messages
+- ✅ Clearer connection lifecycle tracking
+- ✅ Enhanced startup banner
 
-```bash
-npm install
-```
+### 6. **Security Enhancements**
+- ✅ Better command validation
+- ✅ Improved rate limiting
+- ✅ Enhanced input sanitization
+- ✅ Path traversal prevention
 
-## Configuration
+## Implementing Additional Protocol Features
 
-Create a `.env` file in the project root (see `.env.example`):
+### Server-Initiated Commands
 
-```env
-# WebSocket Server
-WS_PORT=9001
+The protocol supports many server-initiated commands. Here's how to implement them:
 
-# MySQL Database
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASS=your_password
-DB_NAME=test_fingerspot
-DB_CONN_LIMIT=10
+#### 1. Get User List
 
-# Device Connection
-DEVICE_OFFLINE_SECONDS=10
+```javascript
+const getUserList = (ws, stn = true) => {
+  ws.send(JSON.stringify({
+    cmd: "getuserlist",
+    stn: stn
+  }));
+};
 
-# Security Settings
-MAX_MESSAGE_SIZE=10485760        # 10MB max message size
-MAX_IMAGE_SIZE=5242880           # 5MB max image size
-MAX_CONNECTIONS_PER_IP=5         # Max WebSocket connections per IP
-RATE_LIMIT_MAX=100               # Max requests per minute per IP
-CONNECTION_TIMEOUT=300000        # 5 minutes idle timeout
-
-# Optional: Device Authentication
-# DEVICE_AUTH_TOKEN=your_secret_token_here
-```
-
-## Security Features
-
-The server includes comprehensive security hardening:
-
-### Input Validation
-- ✓ Serial number format validation (alphanumeric, dash, underscore only)
-- ✓ Command whitelist enforcement
-- ✓ Message size limits (default 10MB)
-- ✓ String length limits on all fields
-- ✓ Type validation on numeric fields
-
-### Rate Limiting
-- ✓ Per-IP request rate limiting (100 requests/minute default)
-- ✓ Connection limits per IP (5 connections default)
-- ✓ Automatic cleanup of rate limit tracking
-
-### Image Security
-- ✓ Base64 format validation
-- ✓ File size limits (5MB default)
-- ✓ JPEG magic byte validation
-- ✓ Path traversal prevention
-- ✓ Filename sanitization
-
-### Network Security
-- ✓ Connection timeout for idle clients (5 minutes)
-- ✓ WebSocket max payload enforcement
-- ✓ Graceful shutdown on SIGINT/SIGTERM
-- ✓ SQL injection prevention (prepared statements)
-
-### Optional Authentication
-Set `DEVICE_AUTH_TOKEN` in `.env` to require devices to authenticate during registration:
-```json
-{
-  "cmd": "reg",
-  "sn": "DEVICE123",
-  "token": "your_secret_token_here"
-}
-```
-
-### Logging
-- Connection/disconnection events with message counts
-- Rate limit violations
-- Authentication failures
-- Invalid data attempts
-- All security rejections
-
-## Database Setup
-
-### 1. Create `attendance_logs` table
-
-```sql
-CREATE TABLE attendance_logs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  device_sn VARCHAR(64) NOT NULL,
-  enroll_id VARCHAR(64) NOT NULL,
-  user_name VARCHAR(128) NULL,
-  log_time DATETIME NOT NULL,
-  verify_mode INT NULL,
-  io_status INT NULL,
-  event_code INT NULL,
-  temperature DECIMAL(5,2) NULL,
-  image_path VARCHAR(255) NULL,
-  device_ip VARCHAR(64) NULL,
-  raw_json TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_log (device_sn, enroll_id, log_time)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
-
-### 2. Create `device_status` table
-
-```sql
-CREATE TABLE device_status (
-  device_sn VARCHAR(64) NOT NULL,
-  last_seen DATETIME NOT NULL,
-  is_online TINYINT(1) NOT NULL DEFAULT 0,
-  device_ip VARCHAR(64) NULL,
-  modelname VARCHAR(32) NULL,
-  usersize INT NULL,
-  facesize INT NULL,
-  fpsize INT NULL,
-  cardsize INT NULL,
-  pwdsize INT NULL,
-  logsize INT NULL,
-  useduser INT NULL,
-  usedface INT NULL,
-  usedfp INT NULL,
-  usedcard INT NULL,
-  usedpwd INT NULL,
-  usedlog INT NULL,
-  usednewlog INT NULL,
-  usedrtlog INT NULL,
-  netinuse TINYINT(1) NULL,
-  usb4g TINYINT(1) NULL,
-  fpalgo VARCHAR(32) NULL,
-  firmware VARCHAR(64) NULL,
-  device_time DATETIME NULL,
-  intercom TINYINT(1) NULL,
-  floors INT NULL,
-  charid INT NULL,
-  useosdp TINYINT(1) NULL,
-  dislanguage INT NULL,
-  mac VARCHAR(32) NULL,
-  PRIMARY KEY (device_sn)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
-
-## Usage
-
-### Start the server
-
-```bash
-npm start
-```
-
-Or for development:
-
-```bash
-node server.js
-```
-
-The server will listen on port `9001` (or your configured `WS_PORT`).
-
-### Configure device
-
-On your FingerSpot AI device:
-1. Go to **Communication Settings**
-2. Set **Cloud Server** mode
-3. Enter server IP and port (e.g., `192.168.1.100:9001`)
-4. Enable **Push Protocol 2.4**
-5. Save and restart device
-
-## Protocol Documentation
-
-### Device → Server Messages
-
-#### 1. Registration (`reg`)
-```json
-{
-  "cmd": "reg",
-  "sn": "AYSH29096497",
-  "devinfo": {
-    "modelname": "AiFace",
-    "firmware": "ai518_f40v_v1.29",
-    "mac": "00-01-F5-01-98-B1",
-    "usersize": 5000,
-    "useduser": 1,
-    ...
+// Handle response in message handler:
+if (data.ret === 'getuserlist' && data.result) {
+  console.log(`Received ${data.count} users from ${data.from} to ${data.to}`);
+  
+  // Process users
+  data.record.forEach(user => {
+    console.log(`User ${user.enrollid}: admin=${user.admin}, backupnum=${user.backupnum}`);
+  });
+  
+  // If more records exist, request next batch
+  if (data.to < data.count - 1) {
+    getUserList(ws, false);
   }
 }
 ```
 
-#### 2. Heartbeat (`heartbeat`)
-```json
-{
-  "cmd": "heartbeat",
-  "sn": "AYSH29096497"
-}
+#### 2. Get/Set Device Info
+
+```javascript
+// Get device configuration
+const getDeviceInfo = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "getdevinfo",
+    sn: deviceSN
+  }));
+};
+
+// Set device configuration
+const setDeviceInfo = (ws, config) => {
+  ws.send(JSON.stringify({
+    cmd: "setdevinfo",
+    sn: deviceSN,
+    deviceid: config.deviceid || 1,
+    language: config.language || 0, // 0=EN, 1=SC, 2=TC, etc.
+    volume: config.volume || 6,     // 0-10
+    screensaver: config.screensaver || 0, // 0=off, 1-255 seconds
+    verifymode: config.verifymode || 0,
+    sleep: config.sleep || 0,
+    userfpnum: config.userfpnum || 3
+  }));
+};
 ```
 
-#### 3. Send Log (`sendlog`)
-```json
-{
-  "cmd": "sendlog",
-  "sn": "AYSH29096497",
-  "count": 1,
-  "logindex": 12345,
-  "record": [
-    {
-      "enrollid": "001",
-      "name": "John Doe",
-      "time": "2026-02-11 10:30:00",
-      "mode": 15,
-      "inout": 0,
-      "event": 0,
-      "temp": "36.5",
-      "image": "base64_encoded_jpeg..."
+#### 3. Download User to Device
+
+```javascript
+const downloadUser = (ws, user) => {
+  ws.send(JSON.stringify({
+    cmd: "setuserinfo",
+    sn: deviceSN,
+    enrollid: user.enrollid,
+    name: user.name,
+    backupnum: user.backupnum, // 0-9:FP, 10:PWD, 11:CARD, 50:PHOTO
+    admin: user.admin || 0,
+    record: user.record // fingerprint template, card number, password, or photo base64
+  }));
+};
+
+// Example: Download fingerprint
+downloadUser(ws, {
+  enrollid: 1,
+  name: "John Doe",
+  backupnum: 0, // First fingerprint
+  admin: 0,
+  record: "fingerprint_template_data_here"
+});
+
+// Example: Download RFID card
+downloadUser(ws, {
+  enrollid: 1,
+  name: "John Doe",
+  backupnum: 11, // RFID card
+  admin: 0,
+  record: "123456789" // Card number
+});
+
+// Example: Download photo (AI device)
+downloadUser(ws, {
+  enrollid: 1,
+  name: "John Doe",
+  backupnum: 50, // Photo
+  admin: 0,
+  record: "base64_encoded_jpeg_here"
+});
+```
+
+#### 4. Access Control (Door Control)
+
+```javascript
+// Set access parameters
+const setAccessControl = (ws, params) => {
+  ws.send(JSON.stringify({
+    cmd: "setdevlock",
+    sn: deviceSN,
+    opendelay: params.opendelay || 5,      // Door open duration (seconds)
+    doorsensor: params.doorsensor || 0,    // 0:disable, 1:NC, 2:NO
+    alarmdelay: params.alarmdelay || 0,    // Alarm delay (minutes)
+    threat: params.threat || 0,            // Threat alarm mode
+    antpass: params.antpass || 0,          // Anti-passback
+    interlock: params.interlock || 0,      // Interlock mode
+    dayzone: params.dayzone || [],         // Time zones (see protocol)
+    weekzone: params.weekzone || [],       // Week schedules
+    lockgroup: params.lockgroup || []      // Multi-person unlock groups
+  }));
+};
+
+// Set user access permissions
+const setUserAccess = (ws, users) => {
+  ws.send(JSON.stringify({
+    cmd: "setuserlock",
+    sn: deviceSN,
+    count: users.length,
+    record: users.map(user => ({
+      enrollid: user.enrollid,
+      weekzone: user.weekzone || 1,
+      weekzone2: user.weekzone2 || 1, // For access controllers with multiple doors
+      weekzone3: user.weekzone3 || 1,
+      weekzone4: user.weekzone4 || 1,
+      group: user.group || 0,         // 0-9: group number
+      starttime: user.starttime || "2024-01-01 00:00:00",
+      endtime: user.endtime || "2099-12-31 23:59:59"
+    }))
+  }));
+};
+
+// Open door remotely
+const openDoor = (ws, doornum = 1) => {
+  ws.send(JSON.stringify({
+    cmd: "opendoor",
+    sn: deviceSN,
+    doornum: doornum // 1-4 for access controllers, omit for single-door devices
+  }));
+};
+```
+
+#### 5. Log Management
+
+```javascript
+// Get new logs
+const getNewLogs = (ws, stn = true) => {
+  ws.send(JSON.stringify({
+    cmd: "getnewlog",
+    sn: deviceSN,
+    stn: stn
+  }));
+};
+
+// Get all logs with date filter
+const getAllLogs = (ws, fromDate, toDate, stn = true) => {
+  ws.send(JSON.stringify({
+    cmd: "getalllog",
+    sn: deviceSN,
+    stn: stn,
+    from: fromDate || "2024-01-01",
+    to: toDate || "2024-12-31"
+  }));
+};
+
+// Clear all logs
+const clearLogs = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "cleanlog",
+    sn: deviceSN
+  }));
+};
+```
+
+#### 6. Device Management
+
+```javascript
+// Sync device time
+const syncTime = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "settime",
+    sn: deviceSN,
+    cloudtime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  }));
+};
+
+// Get device time
+const getTime = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "gettime",
+    sn: deviceSN
+  }));
+};
+
+// Reboot device
+const rebootDevice = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "reboot",
+    sn: deviceSN
+  }));
+};
+
+// Initialize device (DANGEROUS - wipes all data)
+const initDevice = (ws) => {
+  ws.send(JSON.stringify({
+    cmd: "initsys",
+    sn: deviceSN
+  }));
+};
+```
+
+#### 7. Advanced Features (AI Devices)
+
+```javascript
+// Set questionnaire (for event selection on device)
+const setQuestionnaire = (ws, config) => {
+  ws.send(JSON.stringify({
+    cmd: "setquestionnaire",
+    sn: deviceSN,
+    title: config.title || "Select Event",
+    voice: config.voice || "Please select",
+    errmsg: config.errmsg || "Please make a selection",
+    radio: config.radio !== false, // true=single choice, false=multiple
+    optionflag: config.optionflag || 0,
+    usequestion: config.usequestion !== false,
+    useschedule: config.useschedule !== false,
+    card: config.card || 0,
+    items: config.items || ["In", "Out", "Break", "Meeting"],
+    schedules: config.schedules || [
+      "00:01-11:12*1",
+      "11:30-12:30*3",
+      "13:00-19:00*4",
+      "00:00-00:00*0",
+      "00:00-00:00*0",
+      "00:00-00:00*0",
+      "00:00-00:00*0",
+      "00:00-00:00*0"
+    ]
+  }));
+};
+
+// Set holiday schedule
+const setHolidays = (ws, holidays) => {
+  ws.send(JSON.stringify({
+    cmd: "setholiday",
+    sn: deviceSN,
+    holidays: holidays.map(h => ({
+      name: h.name,
+      startday: h.startday,  // "MM-DD" format
+      endday: h.endday,      // "MM-DD" format
+      shift: h.shift || 0,
+      dayzone: h.dayzone || 0
+    }))
+  }));
+};
+
+// Example holidays
+setHolidays(ws, [
+  { name: "New Year", startday: "01-01", endday: "01-01" },
+  { name: "Christmas", startday: "12-25", endday: "12-25" },
+  { name: "Summer Break", startday: "07-01", endday: "07-15" }
+]);
+```
+
+## Extending the Handler System
+
+Add more handlers to the switch statement:
+
+```javascript
+// In the message handler, add:
+case 'getuserlist':
+case 'getuserinfo':
+case 'getnewlog':
+case 'getalllog':
+  // These are responses from device
+  response = await handleDeviceResponse(ws, data, ip);
+  break;
+
+// Implement handler:
+const handleDeviceResponse = async (ws, data, ip) => {
+  console.log(`[RESPONSE] ${data.ret} from ${data.sn || 'unknown'}`);
+  
+  // Process based on response type
+  if (data.ret === 'getuserlist' && data.result) {
+    // Store users in database or process them
+    console.log(`Received ${data.count} users`);
+    // ... handle users
+  }
+  
+  // Don't send a response back - this was a response
+  return null;
+};
+```
+
+## Integration Example: Web Dashboard
+
+```javascript
+// Express.js example for web dashboard
+const express = require('express');
+const app = express();
+
+// Store WebSocket connections by device SN
+const deviceConnections = new Map();
+
+wss.on('connection', (ws, req) => {
+  // ... existing code ...
+  
+  ws.on('message', async (message) => {
+    // ... existing code ...
+    
+    // Store connection after registration
+    if (data.cmd === 'reg' && data.sn) {
+      deviceConnections.set(data.sn, ws);
+      console.log(`Device ${data.sn} registered`);
     }
-  ]
-}
+  });
+  
+  ws.on('close', () => {
+    // Remove from map
+    if (currentSn) {
+      deviceConnections.delete(currentSn);
+    }
+  });
+});
+
+// API endpoint to send command to device
+app.post('/api/device/:sn/command', (req, res) => {
+  const { sn } = req.params;
+  const ws = deviceConnections.get(sn);
+  
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return res.status(404).json({ error: 'Device not connected' });
+  }
+  
+  // Send command
+  ws.send(JSON.stringify(req.body));
+  res.json({ success: true });
+});
+
+// Open door via API
+app.post('/api/device/:sn/opendoor', (req, res) => {
+  const { sn } = req.params;
+  const ws = deviceConnections.get(sn);
+  
+  if (!ws) {
+    return res.status(404).json({ error: 'Device not connected' });
+  }
+  
+  openDoor(ws, req.body.doornum);
+  res.json({ success: true, message: 'Door open command sent' });
+});
+
+app.listen(3000, () => console.log('API listening on port 3000'));
 ```
 
-### Server → Device Responses
+## Testing Commands
 
-#### Registration ACK
-```json
-{
-  "ret": "reg",
-  "result": true,
-  "sn": "AYSH29096497",
-  "cloudtime": "2026-02-11 10:30:00",
-  "nosenduser": true
-}
+```bash
+# Using wscat to test commands
+npm install -g wscat
+
+# Connect to server
+wscat -c ws://localhost:9001
+
+# Send registration
+{"cmd":"reg","sn":"TEST123","devinfo":{"modelname":"TEST-MODEL","firmware":"v1.0"}}
+
+# Send heartbeat
+{"cmd":"heartbeat","sn":"TEST123"}
+
+# Send log
+{"cmd":"sendlog","sn":"TEST123","count":1,"logindex":1,"record":[{"enrollid":"1","time":"2024-02-12 10:30:00","mode":0,"inout":0,"event":0}]}
 ```
 
-#### Heartbeat ACK
-```json
-{
-  "ret": "heartbeat",
-  "result": true,
-  "sn": "AYSH29096497",
-  "cloudtime": "2026-02-11 10:30:00"
-}
+## Environment Variables
+
+```bash
+# .env file
+WS_PORT=9001
+DB_HOST=127.0.0.1
+DB_USER=root
+DB_PASS=your_password
+DB_NAME=fingerspot_db
+DB_PORT=3306
+DB_CONN_LIMIT=10
+
+DEVICE_OFFLINE_SECONDS=30
+MAX_MESSAGE_SIZE=10485760
+MAX_IMAGE_SIZE=5242880
+MAX_CONNECTIONS_PER_IP=10
+RATE_LIMIT_MAX=100
+CONNECTION_TIMEOUT=300000
+
+# Optional authentication
+DEVICE_AUTH_TOKEN=your_secret_token_here
 ```
 
-#### Log ACK
-```json
-{
-  "ret": "sendlog",
-  "result": true,
-  "sn": "AYSH29096497",
-  "count": 1,
-  "logindex": 12345,
-  "cloudtime": "2026-02-11 10:30:00"
-}
+## Production Deployment
+
+### Using PM2
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start server
+pm2 start websocket-server-improved.js --name fingerspot-ws
+
+# Monitor
+pm2 monit
+
+# View logs
+pm2 logs fingerspot-ws
+
+# Restart
+pm2 restart fingerspot-ws
+
+# Auto-start on boot
+pm2 startup
+pm2 save
 ```
 
-## Features Details
+### Using Docker
 
-### Connection Status Tracking
+```dockerfile
+FROM node:18-alpine
 
-- Devices are marked **online** when they connect or send heartbeats/logs
-- Devices are marked **offline** when:
-  - WebSocket connection closes
-  - No heartbeat received within `DEVICE_OFFLINE_SECONDS` (default: 10s)
-- Background task runs every 5 seconds to check for stale devices
+WORKDIR /app
 
-### Image Storage
+COPY package*.json ./
+RUN npm ci --production
 
-Face/fingerprint images from AI devices are:
-- Automatically decoded from base64
-- Saved to `images/` directory
-- Named: `{device_sn}_{enroll_id}_{timestamp}.jpg`
-- Path stored in `attendance_logs.image_path`
+COPY . .
 
-### Device Information
+EXPOSE 9001
 
-On registration, the server stores:
-- Model name, firmware version, MAC address
-- User/face/card/password capacity and usage
-- Fingerprint algorithm version
-- Network configuration
-
-## Project Structure
-
+CMD ["node", "websocket-server-improved.js"]
 ```
-ws/
-├── server.js           # Main WebSocket server
-├── package.json        # Dependencies
-├── .env               # Configuration (create this)
-├── .env.example       # Configuration template
-├── images/            # Captured images (auto-created)
-└── README.md          # This file
+
+```bash
+# Build and run
+docker build -t fingerspot-ws .
+docker run -d -p 9001:9001 --env-file .env fingerspot-ws
+```
+
+## Performance Optimization
+
+### Database Indexes
+```sql
+-- Add these indexes for better performance
+CREATE INDEX idx_attendance_device_date ON attendance_logs(device_sn, log_time);
+CREATE INDEX idx_attendance_user_date ON attendance_logs(enroll_id, log_time);
+CREATE INDEX idx_device_status_online ON device_status(is_online, last_seen);
+```
+
+### Connection Pooling
+```javascript
+// Increase pool size for high-traffic deployments
+const db = mysql.createPool({
+  // ... other config
+  connectionLimit: 50, // Increase from default 10
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
+});
 ```
 
 ## Troubleshooting
 
-### Device not connecting
-- Check firewall allows port 9001
-- Verify device IP can reach server
-- Ensure Protocol 2.4 is enabled on device
-- Check if connection limit per IP is reached
-- If using `DEVICE_AUTH_TOKEN`, ensure device sends it in reg command
+### Device Not Connecting
+1. Check firewall rules (allow port 9001)
+2. Verify device network configuration
+3. Check authentication token if enabled
+4. Review server logs for rejection reason
 
-### Connection rejected
-- **"Too many connections from IP"**: Reduce devices per IP or increase `MAX_CONNECTIONS_PER_IP`
-- **"Rate limit exceeded"**: Increase `RATE_LIMIT_MAX` or check for device malfunction
-- **"Authentication required"**: Device must send correct token in registration
+### Logs Not Saving
+1. Check database connection
+2. Verify table exists (`attendance_logs`)
+3. Check for unique constraint violations
+4. Review error logs
 
-### Logs not saving
-- Check `attendance_logs` table exists
-- Verify database credentials in `.env`
-- Check server console for DB errors
-- Verify device serial number format (alphanumeric only)
+### Images Not Saving
+1. Check `images` directory permissions
+2. Verify MAX_IMAGE_SIZE setting
+3. Check base64 validation errors
+4. Review image format (must be JPEG)
 
-### Images not saving
-- Check `images/` directory exists and is writable
-- Verify image is valid JPEG format
-- Check if image size exceeds `MAX_IMAGE_SIZE`
-- Review console for "INVALID IMAGE" or "IMAGE TOO LARGE" messages
+## Protocol Reference
 
-### Device shows offline
-- Increase `DEVICE_OFFLINE_SECONDS` if network is slow
-- Check device heartbeat interval setting
-- Verify `device_status` table exists
-
-### High CPU/Memory usage
-- Reduce `MAX_CONNECTIONS_PER_IP` and `RATE_LIMIT_MAX`
-- Decrease `CONNECTION_TIMEOUT` to drop idle connections faster
-- Check for malicious/malfunctioning devices sending excessive data
-
-### Security concerns
-- Always use `DEVICE_AUTH_TOKEN` in production
-- Run behind nginx/reverse proxy with SSL/TLS
-- Use firewall to restrict access to known device IPs
-- Regularly review logs for suspicious activity
-- Keep `MAX_MESSAGE_SIZE` and `MAX_IMAGE_SIZE` as low as practical
+See the PDF documentation for complete protocol details:
+- Command structures
+- Response formats
+- Error codes
+- Data types
+- Backup number meanings (0-9: FP, 10: PWD, 11: CARD, 50: PHOTO)
 
 ## License
 
 ISC
+
+## Support
+
+For protocol questions, refer to the official Fingerspot WebSocket JSON Protocol 2.4 documentation.
