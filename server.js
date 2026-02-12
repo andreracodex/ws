@@ -391,7 +391,18 @@ wss.on('connection', (ws, req) => {
         let enrollId = record.enrollid;
         console.log(`Processing log: SN=${data.sn}, EnrollID=${enrollId}, Time=${record.time}`);
 
-        // Fallback for missing enroll ID
+        // Validate required fields
+        if (!enrollId == 99999999) {
+          console.log(`[INVALID LOG] ${data.sn} - Missing enrollId or time`);
+          ws.send(JSON.stringify({
+            ret: "sendlog",
+            result: false,
+            reason: 1
+          }));
+          return;
+        }
+
+        // Fallback for missing enroll ID (but we already checked above)
         if (!enrollId) {
           const fallbackId = `UNKNOWN_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
           enrollId = fallbackId.substring(0, 64);
