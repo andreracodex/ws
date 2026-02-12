@@ -16,10 +16,18 @@ const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = Number.parseInt(process.env.RATE_LIMIT_MAX, 10) || 100;
 const CONNECTION_TIMEOUT = Number.parseInt(process.env.CONNECTION_TIMEOUT, 10) || 300000; // 5 minutes
 const DEVICE_AUTH_TOKEN = process.env.DEVICE_AUTH_TOKEN || null; // Optional authentication
+const RAW_LOG_PATH = process.env.RAW_LOG_PATH || path.join(__dirname, 'ai518_raw.log');
 
 /* ================= SECURITY TRACKING ================= */
 const connectionsByIP = new Map();
 const rateLimitByIP = new Map();
+
+/* ================= RAW LOGGING ================= */
+const rawLogStream = fs.createWriteStream(RAW_LOG_PATH, { flags: 'a' });
+const logRawMessage = (ip, payload) => {
+  const timestamp = new Date().toISOString();
+  rawLogStream.write(`${timestamp} ${ip} ${payload}\n`);
+};
 
 /* ================= DATABASE ================= */
 const db = mysql.createPool({
@@ -243,6 +251,13 @@ wss.on('connection', (ws, req) => {
 
     resetTimeout();
     messageCount++;
+
+    // Capture raw payload for troubleshooting
+    try {
+      logRawMessage(ip, message.toString());
+    } catch (err) {
+      console.log(`[RAW LOG ERROR] ${ip} - ${err.message}`);
+    }
     
     // Rate limiting
     if (!checkRateLimit(ip)) {
@@ -340,6 +355,16 @@ wss.on('connection', (ws, req) => {
 
       for (const record of data.record) {
 
+        let enrollId = record.enrollid;
+        console.log(`Processing log: SN=${data.sn}, EnrollID=${enrollId}, Time=${record.time}`);
+
+        // Fallback for missing enroll ID
+        if (!enrollId) {
+          const fallbackId = `UNKNOWN_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+          enrollId = fallbackId.substring(0, 64);
+          console.log(`[MISSING ENROLLID] ${data.sn} - Using ${enrollId}`);
+        }
+
         let imagePath = null;
 
         /* Save Image (AI Device) */
@@ -351,8 +376,8 @@ wss.on('connection', (ws, req) => {
             } else {
               // Sanitize filename components to prevent path traversal
               const safeSn = sanitizeString(data.sn, 64).replace(/[^A-Za-z0-9_-]/g, '_');
-              const safeEnrollId = sanitizeString(record.enrollid, 64).replace(/[^A-Za-z0-9_-]/g, '_');
-              const filename = `${safeSn}_${safeEnrollId}_${Date.now()}.jpg`;
+              const safeEnrollId = enrollId;
+              const filename = `${safeSn}_${safeEnrollId}_${new Date().toISOString().slice(0,7)}.jpg`;
               const filepath = path.join(imageDir, path.basename(filename)); // Prevent path traversal
               
               // Decode and validate image
@@ -386,7 +411,7 @@ wss.on('connection', (ws, req) => {
             ON DUPLICATE KEY UPDATE id=id`,
             [
               sanitizeString(data.sn, 64),
-              sanitizeString(record.enrollid, 64),
+              enrollId,
               sanitizeString(record.name, 128),
               sanitizeString(record.time, 32),
               Number.parseInt(record.mode, 10) || null,
