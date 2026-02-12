@@ -40,6 +40,50 @@ const db = mysql.createPool({
   connectionLimit: Number.parseInt(process.env.DB_CONN_LIMIT, 10) || 10
 });
 
+const initDb = async () => {
+  try {
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS device_messages (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        device_sn VARCHAR(64) NULL,
+        cmd VARCHAR(32) NULL,
+        device_ip VARCHAR(64) NULL,
+        payload MEDIUMTEXT NOT NULL,
+        is_json_valid TINYINT(1) NOT NULL DEFAULT 1,
+        parse_error VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_device_sn (device_sn),
+        INDEX idx_cmd (cmd),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+    );
+  } catch (err) {
+    console.error('DEVICE MESSAGES TABLE ERROR:', err.message);
+  }
+};
+
+initDb();
+
+const storeDeviceMessage = async (ip, payload, data, isJsonValid, parseError) => {
+  try {
+    await db.execute(
+      `INSERT INTO device_messages
+      (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        data?.sn ? sanitizeString(data.sn, 64) : null,
+        data?.cmd ? sanitizeString(data.cmd, 32) : null,
+        ip || null,
+        payload.substring(0, MAX_MESSAGE_SIZE),
+        isJsonValid ? 1 : 0,
+        parseError ? sanitizeString(parseError, 255) : null
+      ]
+    );
+  } catch (err) {
+    console.error('DEVICE MESSAGE STORE ERROR:', err.message);
+  }
+};
+
 /* ================= VALIDATION FUNCTIONS ================= */
 const isValidSN = (sn) => {
   return typeof sn === 'string' && sn.length > 0 && sn.length <= 64 && /^[A-Za-z0-9_-]+$/.test(sn);
@@ -251,10 +295,11 @@ wss.on('connection', (ws, req) => {
 
     resetTimeout();
     messageCount++;
+    const rawMessage = message.toString();
 
     // Capture raw payload for troubleshooting
     try {
-      logRawMessage(ip, message.toString());
+      logRawMessage(ip, rawMessage);
     } catch (err) {
       console.log(`[RAW LOG ERROR] ${ip} - ${err.message}`);
     }
@@ -276,12 +321,15 @@ wss.on('connection', (ws, req) => {
     let data;
 
     try {
-      data = JSON.parse(message.toString());
-    } catch {
+      data = JSON.parse(rawMessage);
+    } catch (err) {
       console.log(`[INVALID JSON] ${ip}`);
+      storeDeviceMessage(ip, rawMessage, null, false, err.message);
       ws.send(JSON.stringify({ ret: 'error', message: 'Invalid JSON' }));
       return;
     }
+
+    storeDeviceMessage(ip, rawMessage, data, true, null);
     
     // Validate command
     if (!data.cmd || !isValidCmd(data.cmd)) {
