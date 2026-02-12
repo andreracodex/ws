@@ -79,8 +79,8 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
         `SELECT * FROM attendance_logs
          ${whereSql}
          ORDER BY id DESC
-         LIMIT ? OFFSET ?`,
-        [...values, limit, offset]
+         LIMIT ${limit} OFFSET ${offset}`,
+        values
       );
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
