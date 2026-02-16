@@ -50,7 +50,7 @@ net.createServer(socket => {
 
         try {
             await db.execute(
-                `INSERT INTO device_logs 
+                `INSERT INTO device_messages 
                 (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
                 VALUES (?,?,?,?,?,?)`,
                 [device_sn, cmd, ip, raw, jsonValid, parseError]
