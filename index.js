@@ -1,137 +1,110 @@
 const net = require("net");
-const mysql = require("mysql2/promise");
-require("dotenv").config();
-const TARGET_USERS = ["1", "15"]; // allowed user IDs
 
 const PORT = 9001;
 
-/* ---------- DB ---------- */
-const db = mysql.createPool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASS || "",
-  database: process.env.DB_NAME || "test_fingerspot",
-  waitForConnections: true,
-  connectionLimit: 10
-});
+/* ---------- COMMAND TEST LIST ---------- */
+const commands = [
+  "get_info",
+  "get_time",
+  "get_config",
+  "get_user",
+  "get_log",
+  "get_new_log",
+  "unlock",
+  "lock",
+  "beep",
+  "restart",
+  "clear_log",
+  "clear_user"
+];
 
-console.log("RAW INGEST SERVER RUNNING:", PORT);
+let deviceState = {}; // per device progress
 
-/* ---------- SERVER ---------- */
+
+console.log("AUTO DETECT SERVER RUNNING:", PORT);
+
 net.createServer(socket => {
 
   const ip = socket.remoteAddress.replace("::ffff:", "");
   console.log("CONNECT:", ip);
 
-  let bufferStore = Buffer.alloc(0);
+  let buffer = Buffer.alloc(0);
 
-  socket.on("data", async chunk => {
-    bufferStore = Buffer.concat([bufferStore, chunk]);
+  socket.on("data", chunk => {
+    buffer = Buffer.concat([buffer, chunk]);
 
-    while (true) {
+    const text = buffer.toString();
 
-      const dataStr = bufferStore.toString();
+    if (!text.includes("\r\n\r\n")) return;
 
-      const headerEnd = dataStr.indexOf("\r\n\r\n");
-      if (headerEnd === -1) return;
-
-      const headerPart = dataStr.substring(0, headerEnd);
-      const lengthMatch = headerPart.match(/Content-Length:\s*(\d+)/i);
-      const bodyLength = lengthMatch ? parseInt(lengthMatch[1]) : 0;
-
-      const totalLength = headerEnd + 4 + bodyLength;
-      if (bufferStore.length < totalLength) return;
-
-      const fullPacket = bufferStore.slice(0, totalLength);
-      bufferStore = bufferStore.slice(totalLength);
-
-      await handlePacket(fullPacket.toString(), ip, socket);
-    }
+    handlePacket(text, socket, ip);
+    buffer = Buffer.alloc(0);
   });
 
   socket.on("close", () => console.log("DISCONNECTED:", ip));
-  socket.on("error", e => console.log("ERROR:", e.message));
+  socket.on("error", err => console.log("ERROR:", err.message));
 
 }).listen(PORT);
 
 
-/* ---------- PACKET HANDLER ---------- */
 
-async function handlePacket(raw, ip, socket) {
+/* ---------- PACKET PROCESSOR ---------- */
 
-  let device_sn = null;
-  let cmd = null;
-  let jsonValid = 0;
-  let parseError = null;
-  let matchedUser = null;
+function handlePacket(raw, socket, ip) {
 
-  try {
+  const snMatch = raw.match(/dev_id:\s*(.+)/i);
+  const cmdMatch = raw.match(/request_code:\s*(.+)/i);
 
-    /* -------- HEADERS -------- */
+  const sn = snMatch ? snMatch[1].trim() : ip;
+  const req = cmdMatch ? cmdMatch[1].trim() : null;
 
-    const snMatch = raw.match(/dev_id:\s*(.+)/i);
-    if (snMatch) device_sn = snMatch[1].trim();
+  if (!deviceState[sn]) {
+    deviceState[sn] = {
+      index: 0,
+      supported: [],
+      rejected: []
+    };
+  }
 
-    const cmdMatch = raw.match(/request_code:\s*(.+)/i);
-    if (cmdMatch) cmd = cmdMatch[1].trim();
+  const state = deviceState[sn];
 
-    /* -------- JSON BODY -------- */
+  console.log("\nDEVICE:", sn);
+  console.log("REQUEST:", req);
 
-    const jsonStart = raw.indexOf("{");
+  /* ---------- ONLY RESPOND TO COMMAND POLL ---------- */
+  if (req === "receive_cmd") {
 
-    if (jsonStart !== -1) {
-
-      const jsonPart = raw.substring(jsonStart);
-      const parsed = JSON.parse(jsonPart);
-      jsonValid = 1;
-
-      /* -------- USER FILTER -------- */
-
-      // realtime_glog format
-      if (parsed.userId && TARGET_USERS.includes(parsed.userId)) {
-        matchedUser = parsed.userId;
-      }
-
-      // webhook attlog format
-      if (parsed.data?.pin && TARGET_USERS.includes(parsed.data.pin)) {
-        matchedUser = parsed.data.pin;
-      }
-
-      // fallback generic formats
-      if (parsed.pin && TARGET_USERS.includes(parsed.pin)) {
-        matchedUser = parsed.pin;
-      }
+    if (state.index >= commands.length) {
+      console.log("FINISHED TEST:", sn);
+      console.log("SUPPORTED:", state.supported);
+      console.log("REJECTED:", state.rejected);
+      socket.write("cmd=none\n");
+      return;
     }
 
-  } catch (err) {
-    parseError = err.message;
+    const testCmd = commands[state.index];
+
+    console.log("TESTING:", testCmd);
+
+    socket.write(`cmd=${testCmd}\n`);
+    state.last = testCmd;
+    state.index++;
+    return;
   }
 
-  /* -------- SAVE ONLY MATCHED USERS -------- */
+  /* ---------- DEVICE RESPONSE ---------- */
+  if (state.last) {
 
-  if (matchedUser) {
-    try {
-      await db.execute(
-        `INSERT INTO device_messages
-         (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
-         VALUES (?,?,?,?,?,?)`,
-        [device_sn, cmd, ip, raw, jsonValid, parseError]
-      );
-
-      console.log("MATCHED USER:", matchedUser, "| CMD:", cmd);
-
-    } catch (e) {
-      console.log("DB ERROR:", e.message);
+    if (raw.length > 50) {
+      console.log("SUPPORTED:", state.last);
+      state.supported.push(state.last);
+    } else {
+      console.log("REJECTED:", state.last);
+      state.rejected.push(state.last);
     }
-  } else {
-    console.log("IGNORED PACKET (user not target)");
+
+    state.last = null;
   }
 
-  /* -------- RESPONSE -------- */
-
-  if (cmd === "receive_cmd") {
-    socket.write(JSON.stringify({ cmd: "none" }));
-  } else {
-    socket.write("OK");
-  }
+  socket.write("OK");
 }
