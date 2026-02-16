@@ -2,13 +2,15 @@ const net = require("net");
 const mysql = require("mysql2/promise");
 
 const PORT = 9001;
-
+require('dotenv').config();
 const db = mysql.createPool({
-    host: "127.0.0.1",
-    user: "root",
-    password: "",
-    database: "devices",
-    connectionLimit: 10
+  host: process.env.DB_HOST || '127.0.0.1',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASS || 'mypassrootonly',
+  database: process.env.DB_NAME || 'test_fingerspot',
+  port: Number.parseInt(process.env.DB_PORT, 10) || 3306,
+  waitForConnections: true,
+  connectionLimit: Number.parseInt(process.env.DB_CONN_LIMIT, 10) || 10
 });
 
 console.log("RAW INGEST SERVER RUNNING:", PORT);
