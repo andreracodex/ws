@@ -63,7 +63,12 @@ net.createServer(socket => {
         }
 
         // ACK so device stops resending
-        socket.write("OK");
+        if (cmd === "receive_cmd") {
+            socket.write(JSON.stringify({ cmd: "none" }));
+        } else {
+            socket.write("OK");
+        }
+
 
     });
 
