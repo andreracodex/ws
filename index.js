@@ -1,70 +1,79 @@
 const net = require("net");
+const fs = require("fs");
 
 const PORT = 9001;
 
-console.log("VEGA Push Server listening on", PORT);
+console.log("FULL CAPTURE SERVER listening on", PORT);
 
 const server = net.createServer(socket => {
-    console.log("CONNECT:", socket.remoteAddress);
+
+    const ip = socket.remoteAddress;
+    console.log("\nDEVICE CONNECT:", ip);
 
     let buffer = Buffer.alloc(0);
-    let contentLength = null;
 
     socket.on("data", chunk => {
+
+        // append stream
         buffer = Buffer.concat([buffer, chunk]);
 
-        const str = buffer.toString();
+        console.log("\nRAW PACKET HEX:");
+        console.log(chunk.toString("hex"));
 
-        // read headers first
-        if (contentLength === null) {
-            const headerEnd = str.indexOf("\r\n\r\n");
-            if (headerEnd === -1) return;
+        console.log("RAW PACKET ASCII:");
+        console.log(chunk.toString());
 
-            const headers = str.slice(0, headerEnd);
+        // detect HTTP request
+        const text = buffer.toString();
+        const headerEnd = text.indexOf("\r\n\r\n");
+
+        if (headerEnd !== -1) {
+
+            const headers = text.slice(0, headerEnd);
             const match = headers.match(/Content-Length:\s*(\d+)/i);
+
             if (match) {
-                contentLength = parseInt(match[1]);
-            } else {
-                contentLength = 0;
-            }
-        }
 
-        const headerEnd = str.indexOf("\r\n\r\n");
-        if (headerEnd === -1) return;
+                const length = parseInt(match[1]);
+                const totalSize = headerEnd + 4 + length;
 
-        const bodyStart = headerEnd + 4;
-        const totalNeeded = bodyStart + contentLength;
+                if (buffer.length < totalSize) return;
 
-        if (buffer.length < totalNeeded) return;
+                const body = buffer.slice(headerEnd + 4, totalSize).toString();
 
-        const body = buffer.slice(bodyStart, totalNeeded).toString();
+                console.log("\nHTTP BODY:");
+                console.log(body);
 
-        try {
-            const json = JSON.parse(body);
+                // try JSON decode
+                try {
+                    const json = JSON.parse(body);
 
-            console.log("\nLOG RECEIVED:");
-            console.log(json);
+                    console.log("\nDECODED JSON:");
+                    console.dir(json, { depth: null });
 
-            if (json.logPhoto) {
-                require("fs").writeFileSync(
-                    `photo_${Date.now()}.jpg`,
-                    Buffer.from(json.logPhoto, "base64")
+                    // save image if exists
+                    if (json.logPhoto) {
+                        const name = `img_${Date.now()}.jpg`;
+                        fs.writeFileSync(name, Buffer.from(json.logPhoto, "base64"));
+                        console.log("Saved image:", name);
+                    }
+
+                } catch {
+                    console.log("BODY is not JSON");
+                }
+
+                // send ACK response
+                socket.write(
+                    "HTTP/1.1 200 OK\r\nContent-Length:2\r\n\r\nOK"
                 );
-                console.log("Photo saved");
+
+                buffer = Buffer.alloc(0);
             }
-
-        } catch (err) {
-            console.log("JSON parse error");
         }
-
-        socket.write("HTTP/1.1 200 OK\r\nContent-Length:2\r\n\r\nOK");
-
-        buffer = Buffer.alloc(0);
-        contentLength = null;
     });
 
-    socket.on("close", () => console.log("DISCONNECTED"));
-    socket.on("error", err => console.log("ERROR", err.message));
+    socket.on("close", () => console.log("DISCONNECTED:", ip));
+    socket.on("error", err => console.log("ERROR:", err.message));
 });
 
 server.listen(PORT);
