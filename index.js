@@ -1,6 +1,7 @@
 const net = require("net");
 const mysql = require("mysql2/promise");
 require("dotenv").config();
+const TARGET_USERS = ["1", "15"]; // allowed user IDs
 
 const PORT = 9001;
 
@@ -62,8 +63,11 @@ async function handlePacket(raw, ip, socket) {
   let cmd = null;
   let jsonValid = 0;
   let parseError = null;
+  let matchedUser = null;
 
   try {
+
+    /* -------- HEADERS -------- */
 
     const snMatch = raw.match(/dev_id:\s*(.+)/i);
     if (snMatch) device_sn = snMatch[1].trim();
@@ -71,32 +75,59 @@ async function handlePacket(raw, ip, socket) {
     const cmdMatch = raw.match(/request_code:\s*(.+)/i);
     if (cmdMatch) cmd = cmdMatch[1].trim();
 
+    /* -------- JSON BODY -------- */
+
     const jsonStart = raw.indexOf("{");
+
     if (jsonStart !== -1) {
+
       const jsonPart = raw.substring(jsonStart);
-      JSON.parse(jsonPart);
+      const parsed = JSON.parse(jsonPart);
       jsonValid = 1;
+
+      /* -------- USER FILTER -------- */
+
+      // realtime_glog format
+      if (parsed.userId && TARGET_USERS.includes(parsed.userId)) {
+        matchedUser = parsed.userId;
+      }
+
+      // webhook attlog format
+      if (parsed.data?.pin && TARGET_USERS.includes(parsed.data.pin)) {
+        matchedUser = parsed.data.pin;
+      }
+
+      // fallback generic formats
+      if (parsed.pin && TARGET_USERS.includes(parsed.pin)) {
+        matchedUser = parsed.pin;
+      }
     }
 
   } catch (err) {
     parseError = err.message;
   }
 
-  try {
-    await db.execute(
-      `INSERT INTO device_messages
-       (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
-       VALUES (?,?,?,?,?,?)`,
-      [device_sn, cmd, ip, raw, jsonValid, parseError]
-    );
+  /* -------- SAVE ONLY MATCHED USERS -------- */
 
-    console.log("LOG SAVED:", device_sn || "-", cmd || "-");
+  if (matchedUser) {
+    try {
+      await db.execute(
+        `INSERT INTO device_messages
+         (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
+         VALUES (?,?,?,?,?,?)`,
+        [device_sn, cmd, ip, raw, jsonValid, parseError]
+      );
 
-  } catch (e) {
-    console.log("DB ERROR:", e.message);
+      console.log("MATCHED USER:", matchedUser, "| CMD:", cmd);
+
+    } catch (e) {
+      console.log("DB ERROR:", e.message);
+    }
+  } else {
+    console.log("IGNORED PACKET (user not target)");
   }
 
-  /* ---------- PROTOCOL RESPONSE ---------- */
+  /* -------- RESPONSE -------- */
 
   if (cmd === "receive_cmd") {
     socket.write(JSON.stringify({ cmd: "none" }));
