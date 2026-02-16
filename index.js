@@ -64,7 +64,7 @@ const server = net.createServer(socket => {
 
                 // send ACK response
                 socket.write(
-                    "HTTP/1.1 200 OK\r\nContent-Length:2\r\n\r\nOK"
+                    "HTTP/1.1 200 OK\r\nContent-Length:7\r\n\r\nSUCCESS"
                 );
 
                 buffer = Buffer.alloc(0);
