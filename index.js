@@ -5,26 +5,46 @@ const PORT = 9001;
 console.log("VEGA Push Server listening on", PORT);
 
 const server = net.createServer(socket => {
-    const ip = socket.remoteAddress;
-    console.log("\n[DEVICE CONNECT]", ip);
+    console.log("CONNECT:", socket.remoteAddress);
 
-    let buffer = "";
+    let buffer = Buffer.alloc(0);
+    let contentLength = null;
 
     socket.on("data", chunk => {
-        buffer += chunk.toString();
+        buffer = Buffer.concat([buffer, chunk]);
 
-        // wait until full HTTP request arrives
-        if (!buffer.includes("\r\n\r\n")) return;
+        const str = buffer.toString();
 
-        const [header, body] = buffer.split("\r\n\r\n");
+        // read headers first
+        if (contentLength === null) {
+            const headerEnd = str.indexOf("\r\n\r\n");
+            if (headerEnd === -1) return;
+
+            const headers = str.slice(0, headerEnd);
+            const match = headers.match(/Content-Length:\s*(\d+)/i);
+            if (match) {
+                contentLength = parseInt(match[1]);
+            } else {
+                contentLength = 0;
+            }
+        }
+
+        const headerEnd = str.indexOf("\r\n\r\n");
+        if (headerEnd === -1) return;
+
+        const bodyStart = headerEnd + 4;
+        const totalNeeded = bodyStart + contentLength;
+
+        if (buffer.length < totalNeeded) return;
+
+        const body = buffer.slice(bodyStart, totalNeeded).toString();
 
         try {
             const json = JSON.parse(body);
 
-            console.log("\n--- LOG RECEIVED ---");
-            console.log(JSON.stringify(json, null, 2));
+            console.log("\nLOG RECEIVED:");
+            console.log(json);
 
-            // save photo if exists
             if (json.logPhoto) {
                 require("fs").writeFileSync(
                     `photo_${Date.now()}.jpg`,
@@ -33,25 +53,18 @@ const server = net.createServer(socket => {
                 console.log("Photo saved");
             }
 
-        } catch {
-            console.log("Invalid JSON body");
+        } catch (err) {
+            console.log("JSON parse error");
         }
 
-        // send HTTP response (REQUIRED)
-        socket.write(
-            "HTTP/1.1 200 OK\r\nContent-Length:2\r\n\r\nOK"
-        );
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length:2\r\n\r\nOK");
 
-        buffer = "";
+        buffer = Buffer.alloc(0);
+        contentLength = null;
     });
 
-    socket.on("close", () =>
-        console.log("[DISCONNECTED]", ip)
-    );
-
-    socket.on("error", err =>
-        console.log("[SOCKET ERROR]", err.message)
-    );
+    socket.on("close", () => console.log("DISCONNECTED"));
+    socket.on("error", err => console.log("ERROR", err.message));
 });
 
 server.listen(PORT);
