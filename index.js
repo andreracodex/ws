@@ -66,14 +66,14 @@ function parseHttp(buffer){
 
 /* ================= RESPONSE ================= */
 
-function reply(socket, obj){
+function replyAndClose(socket, obj){
     const body = JSON.stringify(obj);
 
-    socket.write(
+    socket.end(
         "HTTP/1.1 200 OK\r\n"+
         "Content-Type: application/json\r\n"+
         "Content-Length: "+Buffer.byteLength(body)+"\r\n"+
-        "Connection: Keep-Alive\r\n"+
+        "Connection: close\r\n"+
         "\r\n"+
         body
     );
@@ -136,7 +136,7 @@ const server = net.createServer(socket=>{
 
             if(isDuplicate(bodyStr)){
                 console.log("Duplicate ignored");
-                reply(socket,{result:true});
+                replyAndClose(socket,{result:true});
                 continue;
             }
 
@@ -145,20 +145,20 @@ const server = net.createServer(socket=>{
                 json = JSON.parse(bodyStr);
             }catch{
                 console.log("Non JSON packet");
-                reply(socket,{ok:true});
+                replyAndClose(socket,{ok:true});
                 continue;
             }
 
             /* ==== IMMEDIATE ACK ==== */
 
             if(packet.headers.request_code === "realtime_glog")
-                reply(socket,{result:true});
+                replyAndClose(socket,{result:true});
 
             else if(packet.headers.request_code === "receive_cmd")
-                reply(socket,{cmd:[]});
+                replyAndClose(socket,{cmd:[]});
 
             else
-                reply(socket,{ok:true});
+                replyAndClose(socket,{ok:true});
 
             /* ==== ASYNC PROCESS ==== */
 
