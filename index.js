@@ -1,79 +1,177 @@
 const net = require("net");
 const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const dayjs = require("dayjs");
+
+/* ================= CONFIG ================= */
 
 const PORT = 9001;
+const IMAGE_DIR = "./images";
+const DUP_WINDOW_MS = 60000;
+const MAX_PACKET = 10 * 1024 * 1024;
 
-console.log("FULL CAPTURE SERVER listening on", PORT);
+if (!fs.existsSync(IMAGE_DIR)) fs.mkdirSync(IMAGE_DIR);
 
-const server = net.createServer(socket => {
+/* ================= DUPLICATE FILTER ================= */
+
+const seen = new Map();
+
+function isDuplicate(str){
+    const hash = crypto.createHash("md5").update(str).digest("hex");
+
+    if(seen.has(hash)) return true;
+
+    seen.set(hash, Date.now());
+    return false;
+}
+
+// auto clean hash cache
+setInterval(()=>{
+    const now = Date.now();
+    for(const [k,v] of seen){
+        if(now - v > DUP_WINDOW_MS) seen.delete(k);
+    }
+}, 10000);
+
+/* ================= HTTP PARSER ================= */
+
+function parseHttp(buffer){
+
+    const text = buffer.toString();
+    const headerEnd = text.indexOf("\r\n\r\n");
+    if(headerEnd === -1) return null;
+
+    const headerText = text.slice(0, headerEnd);
+    const headers = {};
+
+    headerText.split("\r\n").slice(1).forEach(line=>{
+        const [k,v] = line.split(":");
+        if(k && v) headers[k.trim().toLowerCase()] = v.trim();
+    });
+
+    const len = parseInt(headers["content-length"] || 0);
+    const total = headerEnd + 4 + len;
+
+    if(buffer.length < total) return null;
+
+    const body = buffer.slice(headerEnd + 4, total).toString();
+
+    return {
+        headers,
+        body,
+        size: total
+    };
+}
+
+/* ================= RESPONSE ================= */
+
+function reply(socket, obj){
+    const body = JSON.stringify(obj);
+
+    socket.write(
+        "HTTP/1.1 200 OK\r\n"+
+        "Content-Type: application/json\r\n"+
+        "Content-Length: "+Buffer.byteLength(body)+"\r\n"+
+        "Connection: Keep-Alive\r\n"+
+        "\r\n"+
+        body
+    );
+}
+
+/* ================= PROCESSOR ================= */
+
+function processPacket(ip, json){
+
+    console.log("\nEVENT FROM:", ip);
+
+    if(json.time)
+        console.log("Device Time:", json.time);
+
+    if(json.userId)
+        console.log("User:", json.userId);
+
+    if(json.ioMode !== undefined)
+        console.log("Mode:", json.ioMode);
+
+    /* save image */
+    if(json.logPhoto){
+        const file = path.join(
+            IMAGE_DIR,
+            dayjs().format("YYYYMMDD_HHmmss_SSS")+".jpg"
+        );
+
+        fs.writeFileSync(file, Buffer.from(json.logPhoto,"base64"));
+        console.log("Saved image:", file);
+    }
+}
+
+/* ================= SERVER ================= */
+
+const server = net.createServer(socket=>{
 
     const ip = socket.remoteAddress;
     console.log("\nDEVICE CONNECT:", ip);
 
     let buffer = Buffer.alloc(0);
 
-    socket.on("data", chunk => {
+    socket.on("data", chunk=>{
 
-        // append stream
         buffer = Buffer.concat([buffer, chunk]);
 
-        console.log("\nRAW PACKET HEX:");
-        console.log(chunk.toString("hex"));
+        if(buffer.length > MAX_PACKET){
+            console.log("Packet overflow dropped");
+            buffer = Buffer.alloc(0);
+            return;
+        }
 
-        console.log("RAW PACKET ASCII:");
-        console.log(chunk.toString());
+        while(true){
 
-        // detect HTTP request
-        const text = buffer.toString();
-        const headerEnd = text.indexOf("\r\n\r\n");
+            const packet = parseHttp(buffer);
+            if(!packet) break;
 
-        if (headerEnd !== -1) {
+            buffer = buffer.slice(packet.size);
 
-            const headers = text.slice(0, headerEnd);
-            const match = headers.match(/Content-Length:\s*(\d+)/i);
+            const bodyStr = packet.body;
 
-            if (match) {
-
-                const length = parseInt(match[1]);
-                const totalSize = headerEnd + 4 + length;
-
-                if (buffer.length < totalSize) return;
-
-                const body = buffer.slice(headerEnd + 4, totalSize).toString();
-
-                console.log("\nHTTP BODY:");
-                console.log(body);
-
-                // try JSON decode
-                try {
-                    const json = JSON.parse(body);
-
-                    console.log("\nDECODED JSON:");
-                    console.dir(json, { depth: null });
-
-                    // save image if exists
-                    if (json.logPhoto) {
-                        const name = `img_${Date.now()}.jpg`;
-                        fs.writeFileSync(name, Buffer.from(json.logPhoto, "base64"));
-                        console.log("Saved image:", name);
-                    }
-
-                } catch {
-                    console.log("BODY is not JSON");
-                }
-
-                // send ACK response
-                socket.write(
-                    "HTTP/1.1 200 OK\r\nContent-Length:7\r\n\r\nSUCCESS"
-                );
-
-                buffer = Buffer.alloc(0);
+            if(isDuplicate(bodyStr)){
+                console.log("Duplicate ignored");
+                reply(socket,{result:true});
+                continue;
             }
+
+            let json;
+            try{
+                json = JSON.parse(bodyStr);
+            }catch{
+                console.log("Non JSON packet");
+                reply(socket,{ok:true});
+                continue;
+            }
+
+            /* ==== IMMEDIATE ACK ==== */
+
+            if(packet.headers.request_code === "realtime_glog")
+                reply(socket,{result:true});
+
+            else if(packet.headers.request_code === "receive_cmd")
+                reply(socket,{cmd:[]});
+
+            else
+                reply(socket,{ok:true});
+
+            /* ==== ASYNC PROCESS ==== */
+
+            setImmediate(()=>processPacket(ip,json));
         }
     });
 
-    socket.on("close", () => console.log("DISCONNECTED:", ip));
-    socket.on("error", err => console.log("ERROR:", err.message));
+    socket.on("close",()=>console.log("DISCONNECTED:",ip));
+    socket.on("error",e=>console.log("SOCKET ERROR:",e.message));
 });
 
-server.listen(PORT);
+/* ================= START ================= */
+
+server.listen(PORT, ()=>{
+    console.log("Production Push Server running on port", PORT);
+});
