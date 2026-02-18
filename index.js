@@ -1,11 +1,11 @@
 const net = require("net");
 const mysql = require("mysql2/promise");
-const fs = require("fs");
 require("dotenv").config();
+const TARGET_USERS = ["1", "15"]; // allowed user IDs
 
 const PORT = 9001;
 
-/* ---------- DATABASE ---------- */
+/* ---------- DB ---------- */
 const db = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
   user: process.env.DB_USER || "root",
@@ -15,47 +15,38 @@ const db = mysql.createPool({
   connectionLimit: 10
 });
 
-
-/* ---------- COMMAND DICTIONARY ---------- */
-
-const commands = [
-  // confirmed
-  "get_info","get_config","get_user","get_log","get_new_log",
-  "lock","unlock","beep","restart","clear_log","clear_user",
-
-  // likely supported
-  "set_time","get_time","set_config","get_device","get_sn",
-  "open_door","close_door","get_version","get_firmware",
-  "get_photo","get_face","get_fp","get_card",
-  "delete_user","set_user","add_user","update_user",
-  "factory_reset","reboot","poweroff","sleep","wake",
-
-  // experimental
-  "status","ping","test","info","version","time","date",
-  "cmd","list","help","scan","debug","sysinfo","netinfo"
-];
-
-let deviceState = {};
+console.log("RAW INGEST SERVER RUNNING:", PORT);
 
 /* ---------- SERVER ---------- */
-
-console.log("COMMAND SCANNER ACTIVE:", PORT);
-
 net.createServer(socket => {
 
   const ip = socket.remoteAddress.replace("::ffff:", "");
   console.log("CONNECT:", ip);
 
-  let buffer = Buffer.alloc(0);
+  let bufferStore = Buffer.alloc(0);
 
-  socket.on("data", chunk => {
-    buffer = Buffer.concat([buffer, chunk]);
+  socket.on("data", async chunk => {
+    bufferStore = Buffer.concat([bufferStore, chunk]);
 
-    const txt = buffer.toString();
-    if (!txt.includes("\r\n\r\n")) return;
+    while (true) {
 
-    processPacket(txt, socket, ip);
-    buffer = Buffer.alloc(0);
+      const dataStr = bufferStore.toString();
+
+      const headerEnd = dataStr.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+
+      const headerPart = dataStr.substring(0, headerEnd);
+      const lengthMatch = headerPart.match(/Content-Length:\s*(\d+)/i);
+      const bodyLength = lengthMatch ? parseInt(lengthMatch[1]) : 0;
+
+      const totalLength = headerEnd + 4 + bodyLength;
+      if (bufferStore.length < totalLength) return;
+
+      const fullPacket = bufferStore.slice(0, totalLength);
+      bufferStore = bufferStore.slice(totalLength);
+
+      await handlePacket(fullPacket.toString(), ip, socket);
+    }
   });
 
   socket.on("close", () => console.log("DISCONNECTED:", ip));
@@ -64,89 +55,83 @@ net.createServer(socket => {
 }).listen(PORT);
 
 
+/* ---------- PACKET HANDLER ---------- */
 
-/* ---------- PACKET PROCESSOR ---------- */
+async function handlePacket(raw, ip, socket) {
 
-async function processPacket(raw, socket, ip) {
+  let device_sn = null;
+  let cmd = null;
+  let jsonValid = 0;
+  let parseError = null;
+  let matchedUser = null;
 
-  const snMatch = raw.match(/dev_id:\s*(.+)/i);
-  const reqMatch = raw.match(/request_code:\s*(.+)/i);
+  try {
 
-  const sn = snMatch ? snMatch[1].trim() : ip;
-  const req = reqMatch ? reqMatch[1].trim() : null;
+    /* -------- HEADERS -------- */
 
-  if (!deviceState[sn]) {
-    deviceState[sn] = { index: 0, last: null };
-  }
+    const snMatch = raw.match(/dev_id:\s*(.+)/i);
+    if (snMatch) device_sn = snMatch[1].trim();
 
-  const state = deviceState[sn];
+    const cmdMatch = raw.match(/request_code:\s*(.+)/i);
+    if (cmdMatch) cmd = cmdMatch[1].trim();
 
-  /* DEVICE ASKING COMMAND */
-  if (req === "receive_cmd") {
+    /* -------- JSON BODY -------- */
 
-    if (state.index >= commands.length) {
-      socket.write("cmd=none\n");
-      return;
-    }
+    const jsonStart = raw.indexOf("{");
 
-    const cmd = commands[state.index];
-    state.last = cmd;
-    state.index++;
+    if (jsonStart !== -1) {
 
-    console.log("SEND:", sn, cmd);
-    socket.write(`cmd=${cmd}\n`);
-    return;
-  }
+      const jsonPart = raw.substring(jsonStart);
+      const parsed = JSON.parse(jsonPart);
+      jsonValid = 1;
 
+      /* -------- USER FILTER -------- */
 
-  /* DEVICE RESPONSE */
-  if (state.last) {
-
-    let type = "unknown";
-
-    try {
-      const jsonStart = raw.indexOf("{");
-      if (jsonStart !== -1) {
-        JSON.parse(raw.substring(jsonStart));
-        type = "json";
-      } else if (raw.length > 300) {
-        type = "binary";
-      } else if (raw.length > 80) {
-        type = "text";
-      } else {
-        type = "empty";
+      // realtime_glog format
+      if (parsed.userId && TARGET_USERS.includes(parsed.userId)) {
+        matchedUser = parsed.userId;
       }
-    } catch {
-      type = "invalid_json";
+
+      // webhook attlog format
+      if (parsed.data?.pin && TARGET_USERS.includes(parsed.data.pin)) {
+        matchedUser = parsed.data.pin;
+      }
+
+      // fallback generic formats
+      if (parsed.pin && TARGET_USERS.includes(parsed.pin)) {
+        matchedUser = parsed.pin;
+      }
     }
 
-    console.log("RESULT:", sn, state.last, type);
+  } catch (err) {
+    parseError = err.message;
+  }
 
-    /* DB SAVE */
+  /* -------- SAVE ONLY MATCHED USERS -------- */
+
+  if (matchedUser) {
     try {
       await db.execute(
-        `INSERT INTO device_command_scan
-        (device_sn, device_ip, command_sent, response_type, response_raw)
-        VALUES (?,?,?,?,?)`,
-        [sn, ip, state.last, type, raw]
+        `INSERT INTO device_messages
+         (device_sn, cmd, device_ip, payload, is_json_valid, parse_error)
+         VALUES (?,?,?,?,?,?)`,
+        [device_sn, cmd, ip, raw, jsonValid, parseError]
       );
-    } catch(e) {
+
+      console.log("MATCHED USER:", matchedUser, "| CMD:", cmd);
+
+    } catch (e) {
       console.log("DB ERROR:", e.message);
     }
-
-    /* FILE LOG */
-    fs.appendFileSync(
-      "scan_results.log",
-      `[${new Date().toISOString()}] ${sn} | ${state.last} | ${type}\n${raw}\n\n`
-    );
-
-    state.last = null;
+  } else {
+    console.log("IGNORED PACKET (user not target)");
   }
 
-  /* ACK */
-  socket.write(
-    "HTTP/1.0 200 OK\r\n" +
-    "Content-Type: text/plain\r\n" +
-    "Content-Length: 2\r\n\r\nOK"
-  );
+  /* -------- RESPONSE -------- */
+
+  if (cmd === "receive_cmd") {
+    socket.write(JSON.stringify({ cmd: "none" }));
+  } else {
+    socket.write("OK");
+  }
 }
