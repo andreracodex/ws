@@ -15,7 +15,6 @@ const db = mysql.createPool({
   connectionLimit: 10
 });
 
-
 /* ---------- COMMAND LIST ---------- */
 const commands = [
   "get_info",
@@ -44,14 +43,27 @@ net.createServer(socket => {
 
   let buffer = Buffer.alloc(0);
 
-  socket.on("data", chunk => {
+  socket.on("data", async chunk => {
     buffer = Buffer.concat([buffer, chunk]);
 
-    const text = buffer.toString();
-    if (!text.includes("\r\n\r\n")) return;
+    while (true) {
 
-    processPacket(text, socket, ip);
-    buffer = Buffer.alloc(0);
+      const str = buffer.toString();
+      const headerEnd = str.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+
+      const headerPart = str.substring(0, headerEnd);
+      const lenMatch = headerPart.match(/Content-Length:\s*(\d+)/i);
+      const bodyLen = lenMatch ? parseInt(lenMatch[1]) : 0;
+
+      const totalLen = headerEnd + 4 + bodyLen;
+      if (buffer.length < totalLen) return;
+
+      const packet = buffer.slice(0, totalLen).toString();
+      buffer = buffer.slice(totalLen);
+
+      await processPacket(packet, socket, ip);
+    }
   });
 
   socket.on("close", () => console.log("DISCONNECTED:", ip));
@@ -77,12 +89,11 @@ async function processPacket(raw, socket, ip) {
 
   const state = deviceState[sn];
 
-  /* ---------- DEVICE ASK COMMAND ---------- */
+  /* ---------- DEVICE POLLING COMMAND ---------- */
   if (req === "receive_cmd") {
 
     if (state.index >= commands.length) {
-      socket.write("cmd=none\n");
-      return;
+      return sendHTTP(socket, JSON.stringify({ cmd: "none" }));
     }
 
     const cmd = commands[state.index];
@@ -90,18 +101,22 @@ async function processPacket(raw, socket, ip) {
     state.index++;
 
     console.log("SEND:", sn, cmd);
-    socket.write(`cmd=${cmd}\n`);
-    return;
+
+    return sendHTTP(socket, JSON.stringify({ cmd }));
   }
 
   /* ---------- DEVICE RESPONSE ---------- */
   if (state.last) {
 
-    const result = raw.length > 50 ? "supported" : "rejected";
+    const result =
+      raw.includes("OK") ||
+      raw.includes('"result":"OK"') ||
+      raw.length > 80
+        ? "supported"
+        : "rejected";
 
     console.log("RESULT:", sn, state.last, result);
 
-    /* SAVE DB */
     try {
       await db.execute(
         `INSERT INTO device_command_logs
@@ -113,7 +128,6 @@ async function processPacket(raw, socket, ip) {
       console.log("DB ERROR:", e.message);
     }
 
-    /* SAVE FILE LOG */
     fs.appendFileSync(
       "command_log.txt",
       `[${new Date().toISOString()}] ${sn} | ${state.last} | ${result}\n${raw}\n\n`
@@ -122,11 +136,22 @@ async function processPacket(raw, socket, ip) {
     state.last = null;
   }
 
-  socket.write(
-    `HTTP/1.1 200 OK\r
-    Content-Type: text/plain\r
-    Content-Length: 2\r
-    \r
-    OK`
-  );
+  sendHTTP(socket, "OK");
+}
+
+
+
+/* ---------- HTTP RESPONSE BUILDER ---------- */
+
+function sendHTTP(socket, body) {
+  const res =
+    "HTTP/1.1 200 OK\r\n" +
+    "Content-Type: application/json\r\n" +
+    "Content-Length: " + Buffer.byteLength(body) + "\r\n" +
+    "Connection: close\r\n" +
+    "\r\n" +
+    body;
+
+  socket.write(res);
+  socket.end();
 }
