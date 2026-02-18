@@ -83,7 +83,7 @@ async function handlePacket(raw, ip, socket) {
 
       const jsonPart = raw.substring(jsonStart);
       const parsed = JSON.parse(jsonPart);
-      console.log("PARSED JSON:", parsed);
+      console.log("USER DETECT TEST:", parsed.userId, parsed.data?.pin, parsed.pin);
       jsonValid = 1;
 
       /* -------- USER FILTER -------- */
