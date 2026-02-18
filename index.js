@@ -6,7 +6,8 @@ require("dotenv").config();
 /* ================= CONFIG ================= */
 
 const PORT = 9001;
-const TARGET_USERS = ["15"]; // only save these user IDs
+const TARGET_USERS = ["15"];
+const OFFLINE_SECONDS = 60;
 
 /* ================= DATABASE ================= */
 
@@ -19,104 +20,172 @@ const db = mysql.createPool({
   connectionLimit: 10
 });
 
-/* ================= LOGGER ================= */
+/* ================= MEMORY STATE ================= */
+
+const devices = new Map();
+
+/*
+device state structure:
+
+{
+ ip,
+ lastSeen,
+ firstSeen,
+ connects,
+ events
+}
+*/
+
+/* ================= UTIL ================= */
+
+function now(){ return Date.now(); }
 
 function logPacket(raw){
   try{
-    fs.appendFileSync(
-      "packets.log",
-      "\n==== PACKET ====\n"+raw+"\n"
-    );
+    fs.appendFileSync("packets.log","\n==== PACKET ====\n"+raw+"\n");
   }catch{}
 }
 
+function eventName(code){
+  return {
+    0:"PASS",
+    1:"ADMIN",
+    5:"CARD",
+    10:"DOOR_OPEN",
+    11:"DOOR_CLOSE"
+  }[code] || "UNKNOWN";
+}
+
+function touchDevice(sn,ip){
+  if(!devices.has(sn)){
+    devices.set(sn,{
+      ip,
+      firstSeen: now(),
+      lastSeen: now(),
+      connects:1,
+      events:0
+    });
+  }else{
+    const d = devices.get(sn);
+    d.lastSeen = now();
+    d.connects++;
+  }
+}
+
+/* ================= OFFLINE WATCHDOG ================= */
+
+setInterval(()=>{
+
+  const t = now();
+
+  for(const [sn,d] of devices){
+
+    if(t - d.lastSeen > OFFLINE_SECONDS*1000){
+
+      console.log("DEVICE OFFLINE:",sn,d.ip);
+      devices.delete(sn);
+    }
+  }
+
+},10000);
+
 /* ================= SERVER ================= */
 
-const server = net.createServer(socket => {
+const server = net.createServer(socket=>{
 
   const ip = socket.remoteAddress.replace("::ffff:","");
-  console.log("CONNECT:", ip);
+  let buffer = Buffer.alloc(0);
+  let snCache = null;
 
-  let bufferStore = Buffer.alloc(0);
+  console.log("CONNECT:",ip);
 
-  socket.on("data", async chunk => {
+  socket.on("data", async chunk=>{
 
-    bufferStore = Buffer.concat([bufferStore, chunk]);
+    buffer = Buffer.concat([buffer,chunk]);
 
     while(true){
 
-      const str = bufferStore.toString();
+      const str = buffer.toString();
 
       const headerEnd = str.indexOf("\r\n\r\n");
       if(headerEnd === -1) return;
 
-      const headerPart = str.substring(0, headerEnd);
+      const headerPart = str.substring(0,headerEnd);
 
       const lenMatch = headerPart.match(/Content-Length:\s*(\d+)/i);
-      const bodyLength = lenMatch ? parseInt(lenMatch[1]) : 0;
+      const bodyLen = lenMatch ? parseInt(lenMatch[1]) : 0;
 
-      const total = headerEnd + 4 + bodyLength;
+      const totalLen = headerEnd+4+bodyLen;
 
-      if(bufferStore.length < total)
-        return;
+      if(buffer.length < totalLen) return;
 
-      const packet = bufferStore.slice(0,total);
-      bufferStore = bufferStore.slice(total);
+      const packet = buffer.slice(0,totalLen);
+      buffer = buffer.slice(totalLen);
 
-      await handlePacket(packet.toString(), ip, socket);
+      await handlePacket(packet.toString(),ip,socket,(sn)=>{snCache=sn;});
     }
+
   });
 
-  socket.on("close", ()=> console.log("DISCONNECT:", ip));
-  socket.on("error", e=> console.log("SOCKET ERROR:", e.message));
+  socket.on("close",()=>{
+    console.log("DISCONNECT:",ip);
+  });
+
+  socket.on("error",e=>{
+    console.log("SOCKET ERROR:",e.message);
+  });
 
 });
 
-server.listen(PORT, ()=>{
-  console.log("SERVER RUNNING PORT", PORT);
+server.listen(PORT,()=>{
+  console.log("SERVER RUNNING PORT",PORT);
 });
 
 /* ================= PACKET HANDLER ================= */
 
-async function handlePacket(raw, ip, socket){
+async function handlePacket(raw,ip,socket,setSN){
 
   logPacket(raw);
 
   const headerEnd = raw.indexOf("\r\n\r\n");
-  const headerText = raw.substring(0, headerEnd);
-  const bodyText = raw.substring(headerEnd+4);
+  const headerTxt = raw.substring(0,headerEnd);
+  const bodyTxt = raw.substring(headerEnd+4);
 
-  /* ---------- PARSE HEADERS ---------- */
+  /* ---------- HEADERS ---------- */
 
-  const headers = {};
-  headerText.split("\r\n").forEach(line=>{
-    const i = line.indexOf(":");
+  const headers={};
+
+  headerTxt.split("\r\n").forEach(line=>{
+    const i=line.indexOf(":");
     if(i>0)
       headers[line.slice(0,i).trim().toLowerCase()]
         = line.slice(i+1).trim();
   });
 
   const cmd = headers["request_code"] || "";
-  const sn  = headers["dev_id"] || "";
+  const sn  = headers["dev_id"] || "UNKNOWN";
 
-  /* ---------- PARSE JSON ---------- */
+  setSN(sn);
+  touchDevice(sn,ip);
 
-  let json = {};
-  let jsonValid = 1;
-  let parseError = null;
+  /* ---------- JSON ---------- */
+
+  let json={};
+  let valid=1;
+  let err=null;
 
   try{
-    json = JSON.parse(bodyText);
+    json=JSON.parse(bodyTxt);
   }catch(e){
-    jsonValid = 0;
-    parseError = e.message;
+    valid=0;
+    err=e.message;
   }
 
-  /* =================================================
-     EVENT LOG
-     ================================================= */
+  /* ======================================================
+     REALTIME EVENT
+     ====================================================== */
 
-  if(cmd === "realtime_glog"){
+  if(cmd==="realtime_glog"){
 
     const user =
       json.userId ??
@@ -127,50 +196,50 @@ async function handlePacket(raw, ip, socket){
     const time = json.time || null;
     const mode = json.ioMode ?? null;
 
-    console.log("EVENT:", sn, user, time, mode);
+    const dev = devices.get(sn);
+    if(dev) dev.events++;
 
-    /* save only target user */
-    if(user && TARGET_USERS.includes(user)){
+    /* ignore non-user events */
+    if(!user){
+      console.log("EVENT:",sn,"NO_USER",eventName(mode));
+      socket.write("HTTP/1.1 200 OK\r\n\r\n"+'{"result":1}');
+      return;
+    }
 
+    console.log("EVENT:",sn,user,time,eventName(mode));
+
+    if(TARGET_USERS.includes(user)){
       try{
         await db.execute(
           `INSERT INTO device_logs
            (device_sn,user_id,event_time,event_mode,raw,is_json_valid,parse_error,ip)
            VALUES (?,?,?,?,?,?,?,?)`,
-          [sn,user,time,mode,raw,jsonValid,parseError,ip]
+          [sn,user,time,mode,raw,valid,err,ip]
         );
 
-        console.log("SAVED USER", user);
+        console.log("SAVED:",user);
 
       }catch(e){
-        console.log("DB ERROR:", e.message);
+        console.log("DB ERROR:",e.message);
       }
     }
 
-    /* required response */
-    socket.write(
-      "HTTP/1.1 200 OK\r\n\r\n"+
-      '{"result":1}'
-    );
+    socket.write("HTTP/1.1 200 OK\r\n\r\n"+'{"result":1}');
     return;
   }
 
-  /* =================================================
+  /* ======================================================
      COMMAND POLL
-     ================================================= */
+     ====================================================== */
 
-  if(cmd === "receive_cmd"){
-
-    socket.write(
-      "HTTP/1.1 200 OK\r\n\r\n"+
-      '{"cmd":""}'
-    );
+  if(cmd==="receive_cmd"){
+    socket.write("HTTP/1.1 200 OK\r\n\r\n"+'{"cmd":""}');
     return;
   }
 
-  /* =================================================
-     UNKNOWN PACKET
-     ================================================= */
+  /* ======================================================
+     FALLBACK
+     ====================================================== */
 
   socket.write("HTTP/1.1 200 OK\r\n\r\n");
 }
