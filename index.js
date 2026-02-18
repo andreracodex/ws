@@ -54,7 +54,10 @@ net.createServer(socket => {
 
 }).listen(PORT);
 
-
+require("fs").appendFileSync(
+  "raw_packets.log",
+  "\n\n==== PACKET ====\n" + raw + "\n"
+);
 /* ---------- PACKET HANDLER ---------- */
 
 async function handlePacket(raw, ip, socket) {
@@ -83,7 +86,7 @@ async function handlePacket(raw, ip, socket) {
 
       const jsonPart = raw.substring(jsonStart);
       const parsed = JSON.parse(jsonPart);
-      console.log("USER DETECT TEST:", parsed.userId, parsed.data?.pin, parsed.pin);
+      // console.log("USER DETECT TEST:", parsed.userId, parsed.data?.pin, parsed.pin);
       jsonValid = 1;
 
       /* -------- USER FILTER -------- */
