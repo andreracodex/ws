@@ -54,13 +54,14 @@ net.createServer(socket => {
 
 }).listen(PORT);
 
-require("fs").appendFileSync(
-  "raw_packets.log",
-  "\n\n==== PACKET ====\n" + raw + "\n"
-);
 /* ---------- PACKET HANDLER ---------- */
 
 async function handlePacket(raw, ip, socket) {
+
+  require("fs").appendFileSync(
+    "raw_packets.log",
+    "\n\n==== PACKET ====\n" + raw + "\n"
+  );
 
   let device_sn = null;
   let cmd = null;
