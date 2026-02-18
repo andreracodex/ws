@@ -58,10 +58,12 @@ net.createServer(socket => {
 
 async function handlePacket(raw, ip, socket) {
 
-  require("fs").appendFileSync(
-    "raw_packets.log",
-    "\n\n==== PACKET ====\n" + raw + "\n"
-  );
+  try {
+    require("fs").appendFileSync(
+      "raw_packets.log",
+      "\n==== PACKET ====\n" + raw + "\n"
+    );
+  } catch(e) {}
 
   let device_sn = null;
   let cmd = null;
