@@ -122,5 +122,11 @@ async function processPacket(raw, socket, ip) {
     state.last = null;
   }
 
-  socket.write("OK");
+  socket.write(
+    `HTTP/1.1 200 OK\r
+    Content-Type: text/plain\r
+    Content-Length: 2\r
+    \r
+    OK`
+  );
 }
