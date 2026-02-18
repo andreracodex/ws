@@ -3,7 +3,7 @@ const mysql = require("mysql2/promise");
 const fs = require("fs");
 require("dotenv").config();
 
-const PORT = 5005;
+const PORT = 9001;
 
 /* ---------- DB ---------- */
 const db = mysql.createPool({
