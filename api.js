@@ -388,6 +388,7 @@ const startApiServer = (
 
     if (isDeleteUserRoute) {
       const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
+      console.log('Delete user request for enrollId:', enrollIdRaw);
       const enrollId = normalizeEnrollId(enrollIdRaw);
 
       if (!enrollId) {
