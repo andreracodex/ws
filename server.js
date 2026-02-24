@@ -172,6 +172,50 @@ initDb().finally(() => {
           resolve({ ok: false, message: `Failed to send command: ${err.message}` });
         }
       });
+    },
+    deleteUserFromDevice: async (payload) => {
+      const sn = payload?.sn;
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'deleteuser',
+        sn,
+        enrollid: payload.enrollid
+      };
+
+      const requestId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      commandPayload.request_id = requestId;
+      const pendingKey = `${sn}:deleteuser:${requestId}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'deleteuser',
+          requestId,
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
     }
   });
 });

@@ -566,9 +566,11 @@ curl -X POST "http://localhost:9002/api/adduser" \
 Delete user by enrollid:
 
 ```bash
-curl -X DELETE "http://localhost:9002/api/deleteuser?enrollid=1001" \
+curl -X DELETE "http://localhost:9002/api/deleteuser?enrollid=1001&deviceSn=DEVICE_SN_HERE" \
   -H "Authorization: Bearer your-custom-text"
 ```
+
+If `deviceSn` is omitted, the API will try to resolve it from the `api_users` table.
 
 **Backup Number Reference:**
 - `0-9`: Fingerprint templates

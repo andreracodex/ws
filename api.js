@@ -166,6 +166,7 @@ const startApiServer = (
   options = {}
 ) => {
   const sendUserToDevice = options.sendUserToDevice;
+  const deleteUserFromDevice = options.deleteUserFromDevice;
 
   const server = http.createServer(async (req, res) => {
     if (!req.url) {
@@ -388,8 +389,9 @@ const startApiServer = (
 
     if (isDeleteUserRoute) {
       const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
-      console.log('Delete user request for enrollId:', enrollIdRaw);
       const enrollId = normalizeEnrollId(enrollIdRaw);
+      const deviceSnRaw = getBodyValue(body, 'deviceSn', 'device_sn');
+      let deviceSn = String(deviceSnRaw || '').trim() || null;
 
       if (!enrollId) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -401,7 +403,61 @@ const startApiServer = (
         return;
       }
 
+      if (!deviceSn) {
+        try {
+          const [rows] = await db.execute(
+            'SELECT device_sn FROM api_users WHERE finger_id = ? LIMIT 1',
+            [String(enrollId)]
+          );
+          deviceSn = rows?.[0]?.device_sn || null;
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 500,
+            message: 'Failed to resolve device serial number',
+            data: err.message
+          }));
+          return;
+        }
+      }
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (typeof deleteUserFromDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
       try {
+        const deviceResult = await deleteUserFromDevice({
+          sn: deviceSn,
+          enrollid: enrollId
+        });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to delete user from device first'
+          }));
+          return;
+        }
+
         const [deleteResult] = await db.execute(
           'DELETE FROM api_users WHERE finger_id = ?',
           [String(enrollId)]
@@ -414,7 +470,9 @@ const startApiServer = (
           message: 'User deleted successfully',
           data: {
             finger_id: enrollId,
-            rows_deleted: deleteResult.affectedRows
+            device_sn: deviceSn,
+            rows_deleted: deleteResult.affectedRows,
+            device_response: deviceResult.data || null
           }
         }));
       } catch (err) {

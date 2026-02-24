@@ -92,7 +92,10 @@ const addUserWithPicture = async () => {
 };
 
 const deleteUser = async () => {
-  return await request('/api/deleteuser?enrollid=1001', 'DELETE');
+  return await request('/api/deleteuser', 'DELETE', {
+    enrollid: 1001,
+    deviceSn: 'DEVICE_SN_HERE'
+  });
 };
 
 const main = async () => {
