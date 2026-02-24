@@ -563,6 +563,13 @@ curl -X POST "http://localhost:9002/api/adduser" \
   -d '{"enrollid":1003,"userName":"Photo User","deviceSn":"DEVICE_SN_HERE","backupNum":50,"admin":0,"image":"data:image/jpeg;base64,[BASE64_JPEG_HERE]"}'
 ```
 
+Delete user by enrollid:
+
+```bash
+curl -X DELETE "http://localhost:9002/api/deleteuser?enrollid=1001" \
+  -H "Authorization: Bearer your-custom-text"
+```
+
 **Backup Number Reference:**
 - `0-9`: Fingerprint templates
 - `10`: Password (1-32 characters, alphanumeric and `!@#$%^&*_-+=`)

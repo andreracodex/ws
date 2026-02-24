@@ -181,8 +181,9 @@ const startApiServer = (
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const isAttendanceRoute = url.pathname === '/api/attendance_logs';
     const isAddUserRoute = url.pathname === '/api/adduser';
+    const isDeleteUserRoute = url.pathname === '/api/deleteuser';
 
-    if (!isAttendanceRoute && !isAddUserRoute) {
+    if (!isAttendanceRoute && !isAddUserRoute && !isDeleteUserRoute) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: false, 
@@ -212,6 +213,16 @@ const startApiServer = (
       return;
     }
 
+    if (isDeleteUserRoute && req.method !== 'DELETE') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: false, 
+        code: 405, 
+        message: 'Method not allowed. Use DELETE' 
+      }));
+      return;
+    }
+
     const bearerToken = getBearerToken(req.headers.authorization);
     if (bearerToken !== API_BEARER_TOKEN) {
       res.writeHead(401, {
@@ -227,7 +238,9 @@ const startApiServer = (
     }
 
     let body = {};
-    if (isAttendanceRoute && req.method === 'GET') {
+    if ((isAttendanceRoute || isDeleteUserRoute) && req.method === 'GET') {
+      body = Object.fromEntries(url.searchParams.entries());
+    } else if (isDeleteUserRoute && req.method === 'DELETE') {
       body = Object.fromEntries(url.searchParams.entries());
     } else {
       try {
@@ -371,6 +384,53 @@ const startApiServer = (
         }));
         return;
       }
+    }
+
+    if (isDeleteUserRoute) {
+      const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
+      const enrollId = normalizeEnrollId(enrollIdRaw);
+
+      if (!enrollId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'Valid enrollid (numeric, > 0) is required'
+        }));
+        return;
+      }
+
+      try {
+        const [deleteResult] = await db.execute(
+          'DELETE FROM api_users WHERE finger_id = ?',
+          [String(enrollId)]
+        );
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'User deleted successfully',
+          data: {
+            finger_id: enrollId,
+            rows_deleted: deleteResult.affectedRows
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to delete user',
+          data: err.message
+        }));
+      }
+      return;
     }
 
     const limit = Math.min(parsePositiveInt(body.limit, DEFAULT_LIMIT), MAX_LIMIT);

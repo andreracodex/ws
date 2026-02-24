@@ -9,12 +9,20 @@ const request = async (path, method, body) => {
     }
   };
 
-  if (body && method !== 'GET') {
+  if (body && method !== 'GET' && method !== 'DELETE') {
     requestOptions.headers['Content-Type'] = 'application/json';
     requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, requestOptions);
+  // For GET and DELETE, append query params
+  let finalPath = path;
+  if (body && (method === 'GET' || method === 'DELETE')) {
+    const query = new URLSearchParams(body);
+    const separator = path.includes('?') ? '&' : '?';
+    finalPath = path + (Object.keys(body).length > 0 ? separator + query.toString() : '');
+  }
+
+  const response = await fetch(`${API_BASE_URL}${finalPath}`, requestOptions);
 
   const text = await response.text();
   let json;
@@ -83,6 +91,10 @@ const addUserWithPicture = async () => {
   });
 };
 
+const deleteUser = async () => {
+  return await request('/api/deleteuser?enrollid=1001', 'DELETE');
+};
+
 const main = async () => {
   try {
     const attendanceResult = await getAttendanceLogs();
@@ -96,6 +108,9 @@ const main = async () => {
 
     const addUserPictureResult = await addUserWithPicture();
     console.log('Add user with picture result:', addUserPictureResult);
+
+    const deleteUserResult = await deleteUser();
+    console.log('Delete user result:', deleteUserResult);
   } catch (err) {
     console.error('API example failed:', err.message);
     process.exitCode = 1;
