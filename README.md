@@ -520,7 +520,7 @@ const db = mysql.createPool({
 ## Troubleshooting
 
 ### HTTP API Authorization
-The `GET /api/attendance_logs` endpoint requires a Bearer token in the `Authorization` header.
+The HTTP API endpoints require a Bearer token in the `Authorization` header.
 
 Set your custom token text with environment variable:
 
@@ -531,7 +531,18 @@ API_BEARER_TOKEN=your-custom-text
 Request example:
 
 ```bash
-curl -H "Authorization: Bearer your-custom-text" "http://localhost:9002/api/attendance_logs"
+curl "http://localhost:9002/api/attendance_logs?limit=10&offset=0&deviceSn=DEVICE_SN_HERE" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Accept: application/json"
+```
+
+Add user example:
+
+```bash
+curl -X POST "http://localhost:9002/api/adduser" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"enrollid":1001,"userName":"John Doe","deviceSn":"DEVICE_SN_HERE","backupNum":11,"admin":0,"record":"1234567890"}'
 ```
 
 ### Device Not Connecting
