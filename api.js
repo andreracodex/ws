@@ -1,8 +1,19 @@
 const http = require('http');
 const { URL } = require('url');
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+const API_BEARER_TOKEN = process.env.API_BEARER_TOKEN || 'ARmiXDvuTcZBkaTMtfoGUNcRFTAAjuIZ';
+
+const getBearerToken = (authorizationHeader) => {
+  if (!authorizationHeader) return null;
+
+  const [scheme, token] = authorizationHeader.split(' ');
+  if (!scheme || !token) return null;
+  if (scheme.toLowerCase() !== 'bearer') return null;
+
+  return token;
+};
 
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -60,6 +71,19 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
       return;
     }
 
+    const bearerToken = getBearerToken(req.headers.authorization);
+    if (bearerToken !== API_BEARER_TOKEN) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Bearer'
+      });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'Unauthorized: invalid or missing Bearer token'
+      }));
+      return;
+    }
+
     const limit = Math.min(parsePositiveInt(url.searchParams.get('limit'), DEFAULT_LIMIT), MAX_LIMIT);
     const offset = parsePositiveInt(url.searchParams.get('offset'), 0);
     const deviceSn = url.searchParams.get('device_sn');
@@ -77,15 +101,12 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
     try {
       const [rows] = await db.execute(
         `SELECT
-           id,
+           id as log_id,
            enroll_id,
            user_name,
-           COALESCE(DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s'), log_time) AS log_time,
-           verify_mode,
-           io_status,
            event_code,
-           temperature,
-           raw_json
+           verify_mode,
+           COALESCE(DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s'), log_time) AS log_time
          FROM attendance_logs
          ${whereSql}
          ORDER BY id DESC
@@ -94,10 +115,18 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
       );
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, count: rows.length, data: rows }));
+      res.end(JSON.stringify({ 
+        success: true,
+        code: rows.raw_json.note.msg,
+        count: rows.length, 
+        data: rows 
+      }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: err.message }));
+      res.end(JSON.stringify({ 
+        success: false, 
+        error: err.message 
+      }));
     }
   });
 
