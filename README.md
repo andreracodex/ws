@@ -545,6 +545,30 @@ curl -X POST "http://localhost:9002/api/adduser" \
   -d '{"enrollid":1001,"userName":"John Doe","deviceSn":"DEVICE_SN_HERE","backupNum":11,"admin":0,"record":"1234567890"}'
 ```
 
+Add user with password (backupNum=10 for password mode):
+
+```bash
+curl -X POST "http://localhost:9002/api/adduser" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"enrollid":1002,"userName":"Jane Smith","deviceSn":"DEVICE_SN_HERE","backupNum":10,"admin":0,"record":"Pwd@1234"}'
+```
+
+Add user with picture (backupNum=50 for photo mode, requires base64-encoded JPEG):
+
+```bash
+curl -X POST "http://localhost:9002/api/adduser" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"enrollid":1003,"userName":"Photo User","deviceSn":"DEVICE_SN_HERE","backupNum":50,"admin":0,"image":"data:image/jpeg;base64,[BASE64_JPEG_HERE]"}'
+```
+
+**Backup Number Reference:**
+- `0-9`: Fingerprint templates
+- `10`: Password (1-32 characters, alphanumeric and `!@#$%^&*_-+=`)
+- `11`: RFID card number
+- `50`: Photo (base64 encoded JPEG)
+
 ### Device Not Connecting
 1. Check firewall rules (allow port 9001)
 2. Verify device network configuration
