@@ -48,9 +48,9 @@ const addUserToDevice = async () => {
     enrollid: 1001,
     userName: 'John Doe',
     deviceSn: 'DEVICE_SN_HERE',
-    backupNum: 11,
-    admin: 0,
-    record: '1234567890'
+    backupNum: 11, // 11 = fingerprint mode (default), adjust as needed for other modes
+    admin: 0, // 0 = normal user, 1 = admin, other values can be used for different user types if supported by the device
+    record: '1234567890' // This can be a fingerprint template, card number, password, or other data depending on the device's supported modes. Adjust as needed.
   });
 };
 
@@ -60,7 +60,7 @@ const addUserWithPassword = async () => {
     userName: 'Jane Smith',
     deviceSn: 'DEVICE_SN_HERE',
     backupNum: 10,  // 10 = password mode
-    admin: 0,
+    admin: 0, // 0 = normal user, 1 = admin, other values can be used for different user types if supported by the device
     record: 'Pwd@1234'  // Password: 1-32 characters, alphanumeric and !@#$%^&*_-+=
   });
 };
@@ -78,7 +78,7 @@ const addUserWithPicture = async () => {
     userName: 'Photo User',
     deviceSn: 'DEVICE_SN_HERE',
     backupNum: 50,  // 50 = photo mode
-    admin: 0,
+    admin: 0, // 0 = normal user, 1 = admin, other values can be used for different user types if supported by the device
     image: `data:image/jpeg;base64,${sampleJpegBase64}`  // Can also use 'record' field instead of 'image'
   });
 };

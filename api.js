@@ -63,18 +63,6 @@ const normalizeBase64Image = (value) => {
   return compact;
 };
 
-const normalizePassword = (value) => {
-  if (value === undefined || value === null) return null;
-
-  const raw = String(value).trim();
-  if (!raw) return null;
-  if (raw.length < 1 || raw.length > 32) return null;
-  // Password can be numeric or alphanumeric, allow common characters
-  if (!/^[A-Za-z0-9!@#$%^&*_\-+=]+$/.test(raw)) return null;
-
-  return raw;
-};
-
 const parseRequestBody = async (req) => {
   const contentType = (req.headers['content-type'] || '').toLowerCase();
 
@@ -296,20 +284,6 @@ const startApiServer = (
         return;
       }
 
-      // Validate password if backupNum is 10 (password mode)
-      if (backupNum === 10) {
-        const normalizedPassword = normalizePassword(record);
-        if (!normalizedPassword) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: false,
-            code: 400,
-            message: 'Invalid password format. Use 1-32 characters (alphanumeric and !@#$%^&*_-+=)'
-          }));
-          return;
-        }
-      }
-
       if (typeof sendUserToDevice !== 'function') {
         res.writeHead(503, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -350,8 +324,6 @@ const startApiServer = (
               finger_id VARCHAR(64) NOT NULL,
               user_name VARCHAR(128) NOT NULL,
               device_sn VARCHAR(64) NULL,
-              password VARCHAR(32) NULL,
-              backup_num INT NULL DEFAULT 11,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               UNIQUE KEY unique_finger_id (finger_id),
@@ -362,10 +334,10 @@ const startApiServer = (
         }
 
         await db.execute(
-          `INSERT INTO api_users (finger_id, user_name, device_sn, password, backup_num)
-           VALUES (?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE user_name = VALUES(user_name), device_sn = VALUES(device_sn), password = VALUES(password), backup_num = VALUES(backup_num)`,
-          [String(enrollId), userName, deviceSn, backupNum === 10 ? record : null, backupNum]
+          `INSERT INTO api_users (finger_id, user_name, device_sn)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE user_name = VALUES(user_name), device_sn = VALUES(device_sn)`,
+          [String(enrollId), userName, deviceSn]
         );
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -380,7 +352,6 @@ const startApiServer = (
             device_sn: deviceSn,
             backupnum: finalBackupNum,
             image_included: Boolean(normalizedImage),
-            password_set: backupNum === 10,
             device_response: deviceResult.data || null
           }
         }));
