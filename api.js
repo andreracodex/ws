@@ -251,6 +251,7 @@ const startApiServer = (
       const backupNum = Number.parseInt(getBodyValue(body, 'backupNum', 'backup_num') || 11, 10);
       const admin = Number.parseInt(getBodyValue(body, 'admin') || 0, 10);
       const record = getBodyValue(body, 'record', 'template', 'cardNo', 'card_no');
+      const pass = getBodyValue(body, 'pass', 'password', 'pwd', 'passcode');
       const imageBase64 = getBodyValue(body, 'image', 'imageBase64', 'image_base64', 'photo', 'photoBase64', 'photo_base64');
       const normalizedImage = normalizeBase64Image(imageBase64);
 
@@ -304,6 +305,7 @@ const startApiServer = (
           name: userName,
           backupnum: finalBackupNum,
           admin: Number.isNaN(admin) ? 0 : admin,
+          pass: pass || '',
           record: finalRecord
         });
 
@@ -324,6 +326,7 @@ const startApiServer = (
               finger_id VARCHAR(64) NOT NULL,
               user_name VARCHAR(128) NOT NULL,
               device_sn VARCHAR(64) NULL,
+              password VARCHAR(255) NULL,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               UNIQUE KEY unique_finger_id (finger_id),
@@ -334,10 +337,10 @@ const startApiServer = (
         }
 
         await db.execute(
-          `INSERT INTO api_users (finger_id, user_name, device_sn)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE user_name = VALUES(user_name), device_sn = VALUES(device_sn)`,
-          [String(enrollId), userName, deviceSn]
+          `INSERT INTO api_users (finger_id, user_name, device_sn, password)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE user_name = VALUES(user_name), device_sn = VALUES(device_sn), password = VALUES(password)`,
+          [String(enrollId), userName, deviceSn, pass || '']
         );
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
