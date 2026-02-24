@@ -94,6 +94,13 @@ const addUserWithPicture = async () => {
 const deleteUser = async () => {
   return await request('/api/deleteuser', 'DELETE', {
     enrollid: 1001,
+    deviceSn: 'DEVICE_SN_HERE',
+    backupNum: 11
+  });
+};
+
+const cleanLogs = async () => {
+  return await request('/api/cleanlogs', 'POST', {
     deviceSn: 'DEVICE_SN_HERE'
   });
 };
@@ -114,6 +121,9 @@ const main = async () => {
 
     const deleteUserResult = await deleteUser();
     console.log('Delete user result:', deleteUserResult);
+
+    const cleanLogsResult = await cleanLogs();
+    console.log('Clean logs result:', cleanLogsResult);
   } catch (err) {
     console.error('API example failed:', err.message);
     process.exitCode = 1;

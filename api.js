@@ -167,6 +167,7 @@ const startApiServer = (
 ) => {
   const sendUserToDevice = options.sendUserToDevice;
   const deleteUserFromDevice = options.deleteUserFromDevice;
+  const cleanLogsFromDevice = options.cleanLogsFromDevice;
 
   const server = http.createServer(async (req, res) => {
     if (!req.url) {
@@ -183,8 +184,9 @@ const startApiServer = (
     const isAttendanceRoute = url.pathname === '/api/attendance_logs';
     const isAddUserRoute = url.pathname === '/api/adduser';
     const isDeleteUserRoute = url.pathname === '/api/deleteuser';
+    const isCleanLogsRoute = url.pathname === '/api/cleanlogs';
 
-    if (!isAttendanceRoute && !isAddUserRoute && !isDeleteUserRoute) {
+    if (!isAttendanceRoute && !isAddUserRoute && !isDeleteUserRoute && !isCleanLogsRoute) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: false, 
@@ -224,6 +226,16 @@ const startApiServer = (
       return;
     }
 
+    if (isCleanLogsRoute && req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: false, 
+        code: 405, 
+        message: 'Method not allowed. Use POST' 
+      }));
+      return;
+    }
+
     const bearerToken = getBearerToken(req.headers.authorization);
     if (bearerToken !== API_BEARER_TOKEN) {
       res.writeHead(401, {
@@ -239,10 +251,30 @@ const startApiServer = (
     }
 
     let body = {};
-    if ((isAttendanceRoute || isDeleteUserRoute) && req.method === 'GET') {
+    if (isAttendanceRoute && req.method === 'GET') {
       body = Object.fromEntries(url.searchParams.entries());
     } else if (isDeleteUserRoute && req.method === 'DELETE') {
-      body = Object.fromEntries(url.searchParams.entries());
+      const queryBody = Object.fromEntries(url.searchParams.entries());
+      let requestBody = {};
+
+      try {
+        requestBody = await parseRequestBody(req);
+      } catch (_err) {
+        requestBody = {};
+      }
+
+      body = { ...requestBody, ...queryBody };
+    } else if (isCleanLogsRoute && req.method === 'POST') {
+      const queryBody = Object.fromEntries(url.searchParams.entries());
+      let requestBody = {};
+
+      try {
+        requestBody = await parseRequestBody(req);
+      } catch (_err) {
+        requestBody = {};
+      }
+
+      body = { ...requestBody, ...queryBody };
     } else {
       try {
         body = await parseRequestBody(req);
@@ -391,7 +423,11 @@ const startApiServer = (
       const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
       const enrollId = normalizeEnrollId(enrollIdRaw);
       const deviceSnRaw = getBodyValue(body, 'deviceSn', 'device_sn');
+      const backupNumRaw = getBodyValue(body, 'backupNum', 'backup_num');
+      const parsedBackupNum = Number.parseInt(backupNumRaw, 10);
+      const backupNum = Number.isNaN(parsedBackupNum) ? 13 : parsedBackupNum;
       let deviceSn = String(deviceSnRaw || '').trim() || null;
+      console.log('Delete user request - enrollId:', enrollId, 'deviceSn:', deviceSn);
 
       if (!enrollId) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -445,7 +481,8 @@ const startApiServer = (
       try {
         const deviceResult = await deleteUserFromDevice({
           sn: deviceSn,
-          enrollid: enrollId
+          enrollid: enrollId,
+          backupnum: backupNum
         });
 
         if (!deviceResult.ok) {
@@ -471,6 +508,7 @@ const startApiServer = (
           data: {
             finger_id: enrollId,
             device_sn: deviceSn,
+            backupnum: backupNum,
             rows_deleted: deleteResult.affectedRows,
             device_response: deviceResult.data || null
           }
@@ -486,6 +524,69 @@ const startApiServer = (
           success: false,
           code: 500,
           message: 'Failed to delete user',
+          data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isCleanLogsRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn') || '').trim();
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (typeof cleanLogsFromDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
+      try {
+        const deviceResult = await cleanLogsFromDevice({ sn: deviceSn });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to clean logs on device'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'Device logs cleaned successfully',
+          data: {
+            device_sn: deviceSn,
+            device_response: deviceResult.data || null
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to clean logs',
           data: err.message
         }));
       }

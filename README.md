@@ -570,6 +570,15 @@ curl -X DELETE "http://localhost:9002/api/deleteuser?enrollid=1001&deviceSn=DEVI
   -H "Authorization: Bearer your-custom-text"
 ```
 
+Clean device logs:
+
+```bash
+curl -X POST "http://localhost:9002/api/cleanlogs" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"deviceSn":"DEVICE_SN_HERE"}'
+```
+
 If `deviceSn` is omitted, the API will try to resolve it from the `api_users` table.
 
 **Backup Number Reference:**

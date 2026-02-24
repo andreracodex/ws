@@ -186,13 +186,11 @@ initDb().finally(() => {
 
       const commandPayload = {
         cmd: 'deleteuser',
-        sn,
-        enrollid: payload.enrollid
+        enrollid: payload.enrollid,
+        backupnum: payload.backupnum
       };
 
-      const requestId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      commandPayload.request_id = requestId;
-      const pendingKey = `${sn}:deleteuser:${requestId}`;
+      const pendingKey = `${sn}:deleteuser:${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
       return await new Promise((resolve) => {
         const timeout = setTimeout(() => {
@@ -203,7 +201,45 @@ initDb().finally(() => {
         pendingCommandResponses.set(pendingKey, {
           sn,
           ret: 'deleteuser',
-          requestId,
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
+    },
+    cleanLogsFromDevice: async (payload) => {
+      const sn = payload?.sn;
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'cleanlog'
+      };
+
+      const pendingKey = `${sn}:cleanlog:${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'cleanlog',
           resolve,
           timeout
         });
@@ -637,14 +673,18 @@ wss.on('connection', (ws, req) => {
     await storeDeviceMessage(ip, rawMessage, data, true, null);
 
     const responseSn = data.sn || currentSn;
-    if (data.ret && responseSn) {
+    const responseType = data.ret || data.cmd;
+    if (responseType && responseSn) {
       for (const [pendingKey, pending] of pendingCommandResponses.entries()) {
-        if (pending.sn === responseSn && pending.ret === data.ret && (!data.request_id || pending.requestId === data.request_id)) {
+        if (pending.sn === responseSn && pending.ret === responseType) {
           clearTimeout(pending.timeout);
           pendingCommandResponses.delete(pendingKey);
           pending.resolve({
             ok: Boolean(data.result),
-            message: data.message || (data.result ? 'Device accepted command' : 'Device rejected command'),
+            message: data.message
+              || (data.result
+                ? 'Device accepted command'
+                : `Device rejected command${data.reason !== undefined ? ` (reason=${data.reason})` : ''}`),
             data
           });
           return;
