@@ -85,7 +85,7 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
            io_status,
            event_code,
            temperature,
-           raw_json,
+           raw_json
          FROM attendance_logs
          ${whereSql}
          ORDER BY id DESC
