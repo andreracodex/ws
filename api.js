@@ -78,7 +78,6 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
       const [rows] = await db.execute(
         `SELECT
            id,
-           device_sn,
            enroll_id,
            user_name,
            COALESCE(DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s'), log_time) AS log_time,
@@ -86,10 +85,7 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
            io_status,
            event_code,
            temperature,
-           image_path,
-           device_ip,
            raw_json,
-           created_at
          FROM attendance_logs
          ${whereSql}
          ORDER BY id DESC
