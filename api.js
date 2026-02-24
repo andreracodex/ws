@@ -114,14 +114,21 @@ const startApiServer = (db, port = Number.parseInt(process.env.API_PORT, 10) || 
         values
       );
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
+      const responseBody = {
         success: true,
-        code: rows.raw_json.note.msg,
-        count: rows.length, 
-        data: rows 
-      }));
+        code: rows[0]?.raw_json?.note?.msg || null,
+        count: rows.length,
+        data: rows
+      };
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(responseBody));
     } catch (err) {
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
+
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: false, 
