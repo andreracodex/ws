@@ -23,6 +23,11 @@ const parsePositiveInt = (value, fallback) => {
   return parsed;
 };
 
+const isValidDateTime = (value) => {
+  if (value === undefined || value === null) return false;
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(value).trim());
+};
+
 const getBodyValue = (body, ...keys) => {
   for (const key of keys) {
     if (body[key] !== undefined && body[key] !== null && String(body[key]).trim() !== '') {
@@ -168,6 +173,10 @@ const startApiServer = (
   const sendUserToDevice = options.sendUserToDevice;
   const deleteUserFromDevice = options.deleteUserFromDevice;
   const cleanLogsFromDevice = options.cleanLogsFromDevice;
+  const setTimeOnDevice = options.setTimeOnDevice;
+  const getUsernameFromDevice = options.getUsernameFromDevice;
+  const getUserInfoFromDevice = options.getUserInfoFromDevice;
+  const getTimeFromDevice = options.getTimeFromDevice;
 
   const server = http.createServer(async (req, res) => {
     if (!req.url) {
@@ -185,8 +194,13 @@ const startApiServer = (
     const isAddUserRoute = url.pathname === '/api/adduser';
     const isDeleteUserRoute = url.pathname === '/api/deleteuser';
     const isCleanLogsRoute = url.pathname === '/api/cleanlogs';
+    const isSetTimeRoute = url.pathname === '/api/settime';
+    const isGetUsernameRoute = url.pathname === '/api/getusername';
+    const isGetUserInfoRoute = url.pathname === '/api/getuserinfo';
+    const isGetTimeRoute = url.pathname === '/api/gettime';
+    const isSendQrRoute = url.pathname === '/api/sendqr';
 
-    if (!isAttendanceRoute && !isAddUserRoute && !isDeleteUserRoute && !isCleanLogsRoute) {
+    if (!isAttendanceRoute && !isAddUserRoute && !isDeleteUserRoute && !isCleanLogsRoute && !isSetTimeRoute && !isGetUsernameRoute && !isGetUserInfoRoute && !isGetTimeRoute && !isSendQrRoute) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: false, 
@@ -236,6 +250,56 @@ const startApiServer = (
       return;
     }
 
+    if (isSetTimeRoute && req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        code: 405,
+        message: 'Method not allowed. Use POST'
+      }));
+      return;
+    }
+
+    if (isGetUsernameRoute && req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        code: 405,
+        message: 'Method not allowed. Use GET'
+      }));
+      return;
+    }
+
+    if (isGetUserInfoRoute && req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        code: 405,
+        message: 'Method not allowed. Use GET'
+      }));
+      return;
+    }
+
+    if (isGetTimeRoute && req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        code: 405,
+        message: 'Method not allowed. Use GET'
+      }));
+      return;
+    }
+
+    if (isSendQrRoute && req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        code: 405,
+        message: 'Method not allowed. Use POST'
+      }));
+      return;
+    }
+
     const bearerToken = getBearerToken(req.headers.authorization);
     if (bearerToken !== API_BEARER_TOKEN) {
       res.writeHead(401, {
@@ -275,6 +339,34 @@ const startApiServer = (
       }
 
       body = { ...requestBody, ...queryBody };
+    } else if (isSetTimeRoute && req.method === 'POST') {
+      const queryBody = Object.fromEntries(url.searchParams.entries());
+      let requestBody = {};
+
+      try {
+        requestBody = await parseRequestBody(req);
+      } catch (_err) {
+        requestBody = {};
+      }
+
+      body = { ...requestBody, ...queryBody };
+    } else if (isSendQrRoute && req.method === 'POST') {
+      const queryBody = Object.fromEntries(url.searchParams.entries());
+      let requestBody = {};
+
+      try {
+        requestBody = await parseRequestBody(req);
+      } catch (_err) {
+        requestBody = {};
+      }
+
+      body = { ...requestBody, ...queryBody };
+    } else if (isGetUsernameRoute && req.method === 'GET') {
+      body = Object.fromEntries(url.searchParams.entries());
+    } else if (isGetUserInfoRoute && req.method === 'GET') {
+      body = Object.fromEntries(url.searchParams.entries());
+    } else if (isGetTimeRoute && req.method === 'GET') {
+      body = Object.fromEntries(url.searchParams.entries());
     } else {
       try {
         body = await parseRequestBody(req);
@@ -588,6 +680,399 @@ const startApiServer = (
           code: 500,
           message: 'Failed to clean logs',
           data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isSetTimeRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn', 'sn') || '').trim();
+      const cloudtime = String(getBodyValue(body, 'cloudtime', 'cloudTime') || '').trim();
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (!isValidDateTime(cloudtime)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'cloudtime is required in format YYYY-MM-DD HH:mm:ss'
+        }));
+        return;
+      }
+
+      if (typeof setTimeOnDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
+      try {
+        const deviceResult = await setTimeOnDevice({ sn: deviceSn, cloudtime });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to set time on device'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'Device time set successfully',
+          data: {
+            device_sn: deviceSn,
+            cloudtime,
+            device_response: deviceResult.data || null
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to set device time',
+          data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isGetUsernameRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn', 'sn') || '').trim();
+      const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
+      const enrollId = normalizeEnrollId(enrollIdRaw);
+
+      console.log('Get username request - enrollId:', enrollId, 'deviceSn:', deviceSn);
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (!enrollId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'Valid enrollid (numeric, > 0) is required'
+        }));
+        return;
+      }
+
+      if (typeof getUsernameFromDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
+      try {
+        const deviceResult = await getUsernameFromDevice({
+          sn: deviceSn,
+          enrollid: enrollId
+        });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to get username from device'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'Username retrieved successfully',
+          data: {
+            device_sn: deviceSn,
+            enrollid: enrollId,
+            username: deviceResult.data?.record || null,
+            device_response: deviceResult.data || null
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to get username',
+          data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isGetUserInfoRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn', 'sn') || '').trim();
+      const enrollIdRaw = getBodyValue(body, 'enrollid', 'enrollId', 'enroll_id', 'fingerId', 'finger_id', 'id', 'userId', 'userid');
+      const enrollId = normalizeEnrollId(enrollIdRaw);
+      const backupNumRaw = getBodyValue(body, 'backupnum', 'backupNum', 'backup_num');
+      const parsedBackupNum = Number.parseInt(backupNumRaw === null ? 0 : backupNumRaw, 10);
+      const backupNum = Number.isNaN(parsedBackupNum) || parsedBackupNum < 0 ? null : parsedBackupNum;
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (!enrollId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'Valid enrollid (numeric, > 0) is required'
+        }));
+        return;
+      }
+
+      if (backupNum === null) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'backupnum must be a non-negative integer'
+        }));
+        return;
+      }
+
+      if (typeof getUserInfoFromDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
+      try {
+        const deviceResult = await getUserInfoFromDevice({
+          sn: deviceSn,
+          enrollid: enrollId,
+          backupnum: backupNum
+        });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to get user info from device'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'User info retrieved successfully',
+          data: {
+            device_sn: deviceSn,
+            enrollid: deviceResult.data?.enrollid ?? enrollId,
+            name: deviceResult.data?.name ?? null,
+            backupnum: deviceResult.data?.backupnum ?? backupNum,
+            admin: deviceResult.data?.admin ?? null,
+            record: deviceResult.data?.record ?? null,
+            device_response: deviceResult.data || null
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to get user info',
+          data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isGetTimeRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn', 'sn') || '').trim();
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (typeof getTimeFromDevice !== 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 503,
+          message: 'Device command bridge is not available'
+        }));
+        return;
+      }
+
+      try {
+        const deviceResult = await getTimeFromDevice({ sn: deviceSn });
+
+        if (!deviceResult.ok) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            code: 502,
+            message: deviceResult.message || 'Failed to get time from device'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code: 200,
+          message: 'Device time retrieved successfully',
+          data: {
+            device_sn: deviceSn,
+            time: deviceResult.data?.time || null,
+            device_response: deviceResult.data || null
+          }
+        }));
+      } catch (err) {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 500,
+          message: 'Failed to get device time',
+          data: err.message
+        }));
+      }
+      return;
+    }
+
+    if (isSendQrRoute) {
+      const deviceSn = String(getBodyValue(body, 'deviceSn', 'device_sn', 'sn') || '').trim();
+      const record = String(getBodyValue(body, 'record', 'qrcode', 'qr') || '').trim();
+
+      if (!deviceSn) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'deviceSn is required'
+        }));
+        return;
+      }
+
+      if (!record) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          code: 400,
+          message: 'record is required'
+        }));
+        return;
+      }
+
+      try {
+        let matchedUser = null;
+        try {
+          const [rows] = await db.execute(
+            'SELECT finger_id, user_name FROM api_users WHERE finger_id = ? LIMIT 1',
+            [record]
+          );
+          matchedUser = rows?.[0] || null;
+        } catch (dbErr) {
+          if (dbErr?.code !== 'ER_NO_SUCH_TABLE') {
+            throw dbErr;
+          }
+        }
+
+        if (matchedUser) {
+          const enrollIdNumeric = Number.parseInt(matchedUser.finger_id, 10);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ret: 'sendqrcode',
+            result: true,
+            access: 1,
+            enrollid: Number.isNaN(enrollIdNumeric) ? matchedUser.finger_id : enrollIdNumeric,
+            username: matchedUser.user_name || '',
+            messagel: 'ok',
+            message: 'ok'
+          }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ret: 'sendqrcode',
+          result: true,
+          access: 0,
+          enrollid: 0,
+          username: '',
+          messagel: 'not found',
+          message: 'not found'
+        }));
+      } catch (_err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ret: 'sendqrcode',
+          result: false,
+          reason: 1,
+          messagel: 'server error',
+          message: 'server error'
         }));
       }
       return;

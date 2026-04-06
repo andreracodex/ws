@@ -252,6 +252,190 @@ initDb().finally(() => {
           resolve({ ok: false, message: `Failed to send command: ${err.message}` });
         }
       });
+    },
+    setTimeOnDevice: async (payload) => {
+      const sn = payload?.sn;
+      const cloudtime = payload?.cloudtime;
+
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      if (!cloudtime) {
+        return { ok: false, message: 'Missing cloudtime' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'settime',
+        cloudtime: String(cloudtime)
+      };
+
+      const pendingKey = `${sn}:settime:${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'settime',
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
+    },
+    getUsernameFromDevice: async (payload) => {
+      const sn = payload?.sn;
+      const enrollid = payload?.enrollid;
+
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      if (enrollid === undefined || enrollid === null) {
+        return { ok: false, message: 'Missing enrollid' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'getusername',
+        enrollid
+      };
+
+      const pendingKey = `${sn}:getusername:${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'getusername',
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
+    },
+    getUserInfoFromDevice: async (payload) => {
+      const sn = payload?.sn;
+      const enrollid = payload?.enrollid;
+      const backupnum = payload?.backupnum;
+
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      if (enrollid === undefined || enrollid === null) {
+        return { ok: false, message: 'Missing enrollid' };
+      }
+
+      if (backupnum === undefined || backupnum === null) {
+        return { ok: false, message: 'Missing backupnum' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'getuserinfo',
+        enrollid,
+        backupnum
+      };
+
+      const pendingKey = `${sn}:getuserinfo:${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'getuserinfo',
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
+    },
+    getTimeFromDevice: async (payload) => {
+      const sn = payload?.sn;
+
+      if (!sn) {
+        return { ok: false, message: 'Missing device serial number' };
+      }
+
+      const ws = activeDevicesBySn.get(sn);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, message: `Device ${sn} is offline` };
+      }
+
+      const commandPayload = {
+        cmd: 'gettime'
+      };
+
+      const pendingKey = `${sn}:gettime:${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      return await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Timeout waiting device ${sn} response` });
+        }, 8000);
+
+        pendingCommandResponses.set(pendingKey, {
+          sn,
+          ret: 'gettime',
+          resolve,
+          timeout
+        });
+
+        try {
+          ws.send(JSON.stringify(commandPayload));
+        } catch (err) {
+          clearTimeout(timeout);
+          pendingCommandResponses.delete(pendingKey);
+          resolve({ ok: false, message: `Failed to send command: ${err.message}` });
+        }
+      });
     }
   });
 });
@@ -577,18 +761,64 @@ const handleSendUser = async (ws, data, ip) => {
 
 const handleSendQRCode = async (ws, data, ip) => {
   console.log(`[QR CODE] Device: ${data.sn}, Record: ${data.record}`);
-  
-  // Process QR code verification
-  // This is where you'd verify the QR code against your database
-  
-  return {
-    ret: "sendqrcode",
-    result: true,
-    access: 1, // 1 = allow access, 0 = deny
-    enrollid: 0, // Optional: user ID
-    username: "", // Optional: username
-    message: "QR code accepted"
-  };
+
+  const qrRecord = String(data.record || '').trim();
+  if (!qrRecord) {
+    return {
+      ret: 'sendqrcode',
+      result: false,
+      reason: 1,
+      messagel: 'record is required',
+      message: 'record is required'
+    };
+  }
+
+  try {
+    let matchedUser = null;
+    try {
+      const [rows] = await db.execute(
+        'SELECT finger_id, user_name FROM api_users WHERE finger_id = ? LIMIT 1',
+        [qrRecord]
+      );
+      matchedUser = rows?.[0] || null;
+    } catch (dbErr) {
+      if (dbErr?.code !== 'ER_NO_SUCH_TABLE') {
+        throw dbErr;
+      }
+    }
+
+    if (matchedUser) {
+      const enrollIdNumeric = Number.parseInt(matchedUser.finger_id, 10);
+      return {
+        ret: 'sendqrcode',
+        result: true,
+        access: 1,
+        enrollid: Number.isNaN(enrollIdNumeric) ? matchedUser.finger_id : enrollIdNumeric,
+        username: matchedUser.user_name || '',
+        messagel: 'ok',
+        message: 'ok'
+      };
+    }
+
+    return {
+      ret: 'sendqrcode',
+      result: true,
+      access: 0,
+      enrollid: 0,
+      username: '',
+      messagel: 'not found',
+      message: 'not found'
+    };
+  } catch (err) {
+    console.error('[QR VERIFY ERROR]', err.message);
+    return {
+      ret: 'sendqrcode',
+      result: false,
+      reason: 1,
+      messagel: 'server error',
+      message: 'server error'
+    };
+  }
 };
 
 /* ================= WEBSOCKET SERVER ================= */
@@ -677,12 +907,19 @@ wss.on('connection', (ws, req) => {
     if (responseType && responseSn) {
       for (const [pendingKey, pending] of pendingCommandResponses.entries()) {
         if (pending.sn === responseSn && pending.ret === responseType) {
+          const isExplicitSuccess = data.result === true;
+          const isExplicitFailure = data.result === false;
+          const isGetTimeSuccess = responseType === 'gettime'
+            && typeof data.time === 'string'
+            && data.time.trim() !== '';
+          const isSuccessfulResponse = isExplicitSuccess || (!isExplicitFailure && isGetTimeSuccess);
+
           clearTimeout(pending.timeout);
           pendingCommandResponses.delete(pendingKey);
           pending.resolve({
-            ok: Boolean(data.result),
+            ok: isSuccessfulResponse,
             message: data.message
-              || (data.result
+              || (isSuccessfulResponse
                 ? 'Device accepted command'
                 : `Device rejected command${data.reason !== undefined ? ` (reason=${data.reason})` : ''}`),
             data

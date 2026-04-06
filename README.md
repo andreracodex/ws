@@ -579,7 +579,89 @@ curl -X POST "http://localhost:9002/api/cleanlogs" \
   -d '{"deviceSn":"DEVICE_SN_HERE"}'
 ```
 
-If `deviceSn` is omitted, the API will try to resolve it from the `api_users` table.
+Set device time:
+
+```bash
+curl -X POST "http://localhost:9002/api/settime" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"deviceSn":"DEVICE_SN_HERE","cloudtime":"2016-03-25 13:49:30"}'
+```
+
+`cloudtime` format must be `YYYY-MM-DD HH:mm:ss`.
+
+Get username by enrollid:
+
+```bash
+curl "http://localhost:9002/api/getusername?deviceSn=DEVICE_SN_HERE&enrollid=1001" \
+  -H "Authorization: Bearer your-custom-text"
+```
+
+Device success response usually includes:
+- `ret: "getusername"`
+- `result: true`
+- `record: "chingzou"` (UTF-8 or ASCII)
+
+Device fail response usually includes:
+- `ret: "getusername"`
+- `result: false`
+- `reason: 1`
+
+Get user information (fingerprint/template slot):
+
+```bash
+curl "http://localhost:9002/api/getuserinfo?deviceSn=DEVICE_SN_HERE&enrollid=1001&backupnum=0" \
+  -H "Authorization: Bearer your-custom-text"
+```
+
+Device success response usually includes:
+- `ret: "getuserinfo"`
+- `result: true`
+- `enrollid: 1`
+- `name: "chingzou"`
+- `backupnum: 0`
+- `admin: 0`
+- `record: "aabbccddeeffggddssiifdjdkjfkjdsjlkjal"`
+
+Device fail response usually includes:
+- `ret: "getuserinfo"`
+- `result: false`
+- `reason: 1`
+
+Get terminal date and time:
+
+```bash
+curl "http://localhost:9002/api/gettime?deviceSn=DEVICE_SN_HERE" \
+  -H "Authorization: Bearer your-custom-text"
+```
+
+Device success response usually includes:
+- `ret: "gettime"`
+- `time: "2022-11-09 19:31:49"`
+
+QR code sending:
+
+```bash
+curl -X POST "http://localhost:9002/api/sendqr" \
+  -H "Authorization: Bearer your-custom-text" \
+  -H "Content-Type: application/json" \
+  -d '{"cmd":"sendqrcode","sn":"AI07F123456","record":"123456"}'
+```
+
+Server success response example:
+- `ret: "sendqrcode"`
+- `result: true`
+- `access: 1` (1 = open door, 0 = deny)
+- `enrollid: 10`
+- `username: "tom"`
+- `messagel: "ok"`
+
+Server fail response example:
+- `ret: "sendqrcode"`
+- `result: false`
+- `reason: 1`
+
+For `deleteuser`, if `deviceSn` is omitted, the API will try to resolve it from the `api_users` table.
 
 **Backup Number Reference:**
 - `0-9`: Fingerprint templates

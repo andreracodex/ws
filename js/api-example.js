@@ -105,6 +105,41 @@ const cleanLogs = async () => {
   });
 };
 
+const setDeviceTime = async () => {
+  return await request('/api/settime', 'POST', {
+    deviceSn: 'DEVICE_SN_HERE',
+    cloudtime: '2016-03-25 13:49:30'
+  });
+};
+
+const getUsername = async () => {
+  return await request('/api/getusername', 'GET', {
+    deviceSn: 'DEVICE_SN_HERE',
+    enrollid: 1001
+  });
+};
+
+const getUserInfo = async () => {
+  return await request('/api/getuserinfo', 'GET', {
+    deviceSn: 'DEVICE_SN_HERE',
+    enrollid: 1001,
+    backupnum: 0
+  });
+};
+
+const getDeviceTime = async () => {
+  return await request('/api/gettime', 'GET', {
+    deviceSn: 'DEVICE_SN_HERE'
+  });
+};
+
+const sendQr = async () => {
+  return await request('/api/sendqr', 'POST', {
+    deviceSn: 'DEVICE_SN_HERE',
+    record: '123456'
+  });
+};
+
 const main = async () => {
   try {
     const attendanceResult = await getAttendanceLogs();
@@ -124,6 +159,21 @@ const main = async () => {
 
     const cleanLogsResult = await cleanLogs();
     console.log('Clean logs result:', cleanLogsResult);
+
+    const setDeviceTimeResult = await setDeviceTime();
+    console.log('Set device time result:', setDeviceTimeResult);
+
+    const getUsernameResult = await getUsername();
+    console.log('Get username result:', getUsernameResult);
+
+    const getUserInfoResult = await getUserInfo();
+    console.log('Get user info result:', getUserInfoResult);
+
+    const getDeviceTimeResult = await getDeviceTime();
+    console.log('Get device time result:', getDeviceTimeResult);
+
+    const sendQrResult = await sendQr();
+    console.log('Send QR result:', sendQrResult);
   } catch (err) {
     console.error('API example failed:', err.message);
     process.exitCode = 1;
